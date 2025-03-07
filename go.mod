@@ -1,4 +1,4 @@
-module github.com/vulkoingim/zrok-ingress-controller
+module github.com/vulkoingim/zrok-operator
 
 go 1.23.0
 

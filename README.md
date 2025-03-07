@@ -1,4 +1,4 @@
-# zrok-ingress-controller
+# zrok-operator
 // TODO(user): Add simple overview of use/purpose
 
 ## Description

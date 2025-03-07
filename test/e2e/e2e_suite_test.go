@@ -25,7 +25,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/vulkoingim/zrok-ingress-controller/test/utils"
+	"github.com/vulkoingim/zrok-operator/test/utils"
 )
 
 var (

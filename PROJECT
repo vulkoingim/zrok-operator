@@ -5,6 +5,6 @@
 domain: k8s.zrok.io
 layout:
 - go.kubebuilder.io/v4
-projectName: zrok-ingress-controller
-repo: github.com/vulkoingim/zrok-ingress-controller
+projectName: zrok-operator
+repo: github.com/vulkoingim/zrok-operator
 version: "3"
