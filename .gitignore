@@ -23,3 +23,13 @@ go.work.sum
 
 # env file
 .env
+
+# Dirs
+.DS_Store
+.direnv
+.project
+.vscode
+.fleet
+python/models
+python
+.idea
