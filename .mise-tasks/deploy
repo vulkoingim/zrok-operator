@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+#MISE description="Deploy operator to current cluster via kustomize"
+#MISE depends=["gen"]
+#USAGE flag "--img <img>" help="Controller image" default="zrok-operator:dev"
+set -euo pipefail
+
+IMG="${usage_img:-${IMG:-zrok-operator:dev}}"
+cd "$(git rev-parse --show-toplevel)"
+
+echo "Setting image to $IMG"
+cd config/manager
+kustomize edit set image controller="$IMG"
+cd ../..
+
+echo "Applying config/default"
+kustomize build config/default | kubectl apply -f -
+
+echo "Waiting for controller-manager rollout"
+kubectl -n zrok-operator-system rollout status deploy/zrok-operator-controller-manager --timeout=120s

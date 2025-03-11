@@ -22,6 +22,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -327,3 +328,67 @@ type tokenRequest struct {
 		Token string `json:"token"`
 	} `json:"status"`
 }
+
+var _ = Describe("Live zrok share", Ordered, func() {
+	It("creates an Environment + Share when ZROK2_ENABLE_TOKEN is set", func() {
+		token := os.Getenv("ZROK2_ENABLE_TOKEN")
+		if token == "" {
+			Skip("ZROK2_ENABLE_TOKEN not set; skipping live zrok e2e")
+		}
+
+		By("creating enable token secret in default namespace")
+		cmd := exec.Command("kubectl", "create", "secret", "generic", "zrok-credentials",
+			"--from-literal=enable-token="+token, "-n", "default")
+		_, _ = utils.Run(cmd)
+
+		By("deploying nginx backend")
+		cmd = exec.Command("kubectl", "apply", "-f", "-")
+		cmd.Stdin = strings.NewReader(`
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: nginx, namespace: default }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: nginx } }
+  template:
+    metadata: { labels: { app: nginx } }
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:stable
+        ports: [{ containerPort: 80 }]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: nginx, namespace: default }
+spec:
+  selector: { app: nginx }
+  ports: [{ port: 80, targetPort: 80 }]
+`)
+		_, err := utils.Run(cmd)
+		Expect(err).NotTo(HaveOccurred())
+
+		By("applying Environment + Share")
+		sample := filepath.Join("..", "..", "config", "samples", "zrok_v1alpha1_environment_share.yaml")
+		cmd = exec.Command("kubectl", "apply", "-f", sample)
+		_, err = utils.Run(cmd)
+		Expect(err).NotTo(HaveOccurred())
+
+		By("waiting for share Ready")
+		Eventually(func(g Gomega) {
+			cmd := exec.Command("kubectl", "get", "zrokshare", "nginx", "-n", "default",
+				"-o", `jsonpath={.status.conditions[?(@.type=="Ready")].status}`)
+			out, err := utils.Run(cmd)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(out).To(Equal("True"))
+		}).WithTimeout(3 * time.Minute).Should(Succeed())
+
+		By("fetching assigned URL")
+		cmd = exec.Command("kubectl", "get", "zrokshare", "nginx", "-n", "default",
+			"-o", "jsonpath={.status.assignedURL}")
+		url, err := utils.Run(cmd)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(url).To(HavePrefix("http"))
+		_, _ = fmt.Fprintf(GinkgoWriter, "assignedURL=%s\n", url)
+	})
+})

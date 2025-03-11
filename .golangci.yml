@@ -1,47 +1,193 @@
+version: "2"
 run:
-  timeout: 5m
-  allow-parallel-runners: true
-
-issues:
-  # don't skip warning about doc comments
-  # don't exclude the default set of lint
-  exclude-use-default: false
-  # restore some of the defaults
-  # (fill in the rest as needed)
-  exclude-rules:
-    - path: "api/*"
-      linters:
-        - lll
-    - path: "internal/*"
-      linters:
-        - dupl
-        - lll
+  issues-exit-code: 1
 linters:
-  disable-all: true
+  default: none
   enable:
+    - bodyclose
+    - copyloopvar
+    - depguard
+    - dogsled
     - dupl
     - errcheck
-    - copyloopvar
-    - ginkgolinter
+    - errorlint
+    - funlen
+    - gocheckcompilerdirectives
+    - gochecknoinits
     - goconst
+    - gocritic
     - gocyclo
-    - gofmt
-    - goimports
-    - gosimple
+    - godox
+    - goprintffuncname
+    - gosec
     - govet
+    - importas
     - ineffassign
-    - lll
+    - loggercheck
     - misspell
     - nakedret
-    - prealloc
+    - noctx
+    - nolintlint
     - revive
+    - sqlclosecheck
     - staticcheck
-    - typecheck
+    - testifylint
     - unconvert
     - unparam
     - unused
-
-linters-settings:
-  revive:
+    - whitespace
+  settings:
+    depguard:
+      rules:
+        logger:
+          files:
+            - '!**/*_test.go'
+          deny:
+            - pkg: github.com/sirupsen/logrus
+              desc: use logr / controller-runtime logging
+            - pkg: github.com/pkg/errors
+              desc: use stdlib errors / fmt.Errorf with %w
+    errorlint:
+      asserts: false
+    dupl:
+      threshold: 200
+    funlen:
+      lines: -1
+      statements: 60
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+      ignore-tests: true
+    gocritic:
+      disabled-checks:
+        - dupImport
+        - ifElseChain
+        - octalLiteral
+        - whyNoLint
+        - unnamedResult
+        - hugeParam
+        - paramTypeCombine
+      enabled-tags:
+        - diagnostic
+        - experimental
+        - opinionated
+        - performance
+        - style
+    gocyclo:
+      min-complexity: 30
+    godox:
+      keywords:
+        - FIXME
+    govet:
+      enable:
+        - nilness
+        - shadow
+    loggercheck:
+      zap: true
+    misspell:
+      locale: US
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+      allow-unused: false
+    revive:
+      rules:
+        - name: indent-error-flow
+        - name: unexported-return
+          disabled: true
+        - name: unused-parameter
+        - name: unused-receiver
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
     rules:
-      - name: comment-spacings
+      # Kubebuilder SchemeBuilder.Register requires init() in API packages.
+      - linters:
+          - gochecknoinits
+        path: api/
+      # Scaffold main is intentionally long (metrics/webhook wiring).
+      - linters:
+          - funlen
+          - gocyclo
+          - gochecknoinits
+        path: cmd/main\.go
+      # Reconcile loops are naturally branchy; keep other linters.
+      - linters:
+          - funlen
+          - gocyclo
+        path: internal/controller/
+      # Prometheus MustRegister in package init is idiomatic.
+      - linters:
+          - gochecknoinits
+        path: internal/metrics/
+      # Deprecated scheme.Builder is still the kubebuilder standard.
+      - linters:
+          - staticcheck
+        path: api/
+        text: 'SA1019: scheme.Builder is deprecated'
+      # Tests: exec + shadow noise, gosec on kubectl/make.
+      - linters:
+          - gosec
+          - noctx
+          - govet
+          - gocritic
+          - staticcheck
+          - funlen
+          - gocyclo
+        path: (.+)_test\.go
+      - linters:
+          - gosec
+          - noctx
+          - govet
+          - gocritic
+          - staticcheck
+        path: test/
+      - linters:
+          - dupl
+        path: (.+)_test\.go
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gci
+    - gofmt
+    - goimports
+    - gofumpt
+    - golines
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/vulkoingim/zrok-operator)
+        - blank
+        - dot
+        - alias
+        - localmodule
+    gofmt:
+      rewrite-rules:
+        - pattern: interface{}
+          replacement: any
+        - pattern: 'a[b:len(a)]'
+          replacement: 'a[b:]'
+    goimports:
+      local-prefixes:
+        - github.com/vulkoingim/zrok-operator
+    golines:
+      max-len: 200
+      tab-len: 8
+      shorten-comments: false
+      reformat-tags: true
+      chain-split-dots: true
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

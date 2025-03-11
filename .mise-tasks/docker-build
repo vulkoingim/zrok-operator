@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+#MISE description="Build manager Docker image"
+#USAGE flag "--img <img>" help="Image tag" default="zrok-operator:dev"
+set -euo pipefail
+
+IMG="${usage_img:-${IMG:-zrok-operator:dev}}"
+echo "Building $IMG"
+docker build -t "$IMG" .

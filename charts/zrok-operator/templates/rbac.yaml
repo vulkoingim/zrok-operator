@@ -1,0 +1,45 @@
+{{- if .Values.rbac.create }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "zrok-operator.fullname" . }}
+  labels:
+    {{- include "zrok-operator.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["zrok.k8s.zrok.io"]
+    resources: ["zrokenvironments", "zrokshares", "zrokaccesses"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["zrok.k8s.zrok.io"]
+    resources: ["zrokenvironments/status", "zrokshares/status", "zrokaccesses/status"]
+    verbs: ["get", "update", "patch"]
+  - apiGroups: ["zrok.k8s.zrok.io"]
+    resources: ["zrokenvironments/finalizers", "zrokshares/finalizers", "zrokaccesses/finalizers"]
+    verbs: ["update"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["services", "persistentvolumeclaims", "secrets", "pods"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "zrok-operator.fullname" . }}
+  labels:
+    {{- include "zrok-operator.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "zrok-operator.fullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "zrok-operator.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

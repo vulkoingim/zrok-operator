@@ -1,0 +1,21 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: nginx-zrok
+  namespace: default
+  annotations:
+    zrok.k8s.zrok.io/environment: default
+    zrok.k8s.zrok.io/name: nginx-ingress
+    zrok.k8s.zrok.io/namespace-token: public
+spec:
+  ingressClassName: zrok
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: nginx
+                port:
+                  number: 80

@@ -1,0 +1,285 @@
+/*
+Copyright 2025.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package controller
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/log"
+
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	ctrl "sigs.k8s.io/controller-runtime"
+
+	zrokv1alpha1 "github.com/vulkoingim/zrok-operator/api/v1alpha1"
+	"github.com/vulkoingim/zrok-operator/internal/agent"
+	"github.com/vulkoingim/zrok-operator/internal/status"
+	"github.com/vulkoingim/zrok-operator/internal/zrokclient"
+)
+
+// ZrokEnvironmentReconciler reconciles a ZrokEnvironment object.
+type ZrokEnvironmentReconciler struct {
+	client.Client
+	Scheme   *runtime.Scheme
+	Recorder record.EventRecorder
+	Zrok     *zrokclient.Clients
+}
+
+// +kubebuilder:rbac:groups=zrok.k8s.zrok.io,resources=zrokenvironments,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=zrok.k8s.zrok.io,resources=zrokenvironments/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=zrok.k8s.zrok.io,resources=zrokenvironments/finalizers,verbs=update
+// +kubebuilder:rbac:groups=zrok.k8s.zrok.io,resources=zrokshares,verbs=get;list;watch
+// +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=core,resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch
+// +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
+// +kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;watch
+
+func (r *ZrokEnvironmentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+
+	env := &zrokv1alpha1.ZrokEnvironment{}
+	if err := r.Get(ctx, req.NamespacedName, env); err != nil {
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
+	if !env.DeletionTimestamp.IsZero() {
+		return r.reconcileDelete(ctx, env)
+	}
+
+	if !controllerutil.ContainsFinalizer(env, zrokv1alpha1.EnvironmentFinalizer) {
+		controllerutil.AddFinalizer(env, zrokv1alpha1.EnvironmentFinalizer)
+		if err := r.Update(ctx, env); err != nil {
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{Requeue: true}, nil
+	}
+
+	token, err := r.readEnableToken(ctx, env)
+	if err != nil {
+		r.setNotReady(ctx, env, "SecretError", err.Error())
+		r.Recorder.Event(env, corev1.EventTypeWarning, "SecretError", err.Error())
+		return ctrl.Result{}, err
+	}
+
+	if err = r.ensurePVC(ctx, env); err != nil {
+		r.setNotReady(ctx, env, "PVCError", err.Error())
+		return ctrl.Result{}, err
+	}
+
+	if err = r.ensureService(ctx, env); err != nil {
+		r.setNotReady(ctx, env, "ServiceError", err.Error())
+		return ctrl.Result{}, err
+	}
+
+	if err = r.ensureDeployment(ctx, env, token); err != nil {
+		r.setNotReady(ctx, env, "DeploymentError", err.Error())
+		return ctrl.Result{}, err
+	}
+
+	agentReady, err := r.isAgentReady(ctx, env)
+	if err != nil {
+		r.setNotReady(ctx, env, "AgentCheckError", err.Error())
+		return ctrl.Result{}, err
+	}
+
+	env.Status.ObservedGeneration = env.Generation
+	env.Status.AgentService = fmt.Sprintf("%s.%s.svc", agent.ServiceName(env), env.Namespace)
+	env.Status.AgentReady = agentReady
+
+	if !agentReady {
+		status.SetCondition(&env.Status.Conditions, zrokv1alpha1.ConditionAgentReady, metav1.ConditionFalse, "Waiting", "agent Deployment not ready", env.Generation)
+		status.SetCondition(&env.Status.Conditions, zrokv1alpha1.ConditionEnabled, metav1.ConditionUnknown, "Pending", "waiting for enable init container", env.Generation)
+		status.SetCondition(&env.Status.Conditions, zrokv1alpha1.ConditionReady, metav1.ConditionFalse, "WaitingForAgent", "agent not ready", env.Generation)
+		if err := r.Status().Update(ctx, env); err != nil {
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+	}
+
+	// Probe agent HTTP console.
+	if _, err := r.Zrok.Agent.Status(ctx, agent.AgentBaseURL(env)); err != nil {
+		logger.Info("agent status not ready yet", "error", err)
+		status.SetCondition(&env.Status.Conditions, zrokv1alpha1.ConditionAgentReady, metav1.ConditionFalse, "ConsoleUnreachable", err.Error(), env.Generation)
+		status.SetCondition(&env.Status.Conditions, zrokv1alpha1.ConditionReady, metav1.ConditionFalse, "ConsoleUnreachable", err.Error(), env.Generation)
+		_ = r.Status().Update(ctx, env)
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+	}
+
+	status.SetCondition(&env.Status.Conditions, zrokv1alpha1.ConditionAgentReady, metav1.ConditionTrue, "Ready", "agent console reachable", env.Generation)
+	status.SetCondition(&env.Status.Conditions, zrokv1alpha1.ConditionEnabled, metav1.ConditionTrue, "Enabled", "environment enabled via agent init", env.Generation)
+	status.SetCondition(&env.Status.Conditions, zrokv1alpha1.ConditionReady, metav1.ConditionTrue, "Ready", "environment ready", env.Generation)
+	if err := r.Status().Update(ctx, env); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	r.Recorder.Event(env, corev1.EventTypeNormal, "Ready", "ZrokEnvironment is ready")
+	return ctrl.Result{RequeueAfter: 2 * time.Minute}, nil
+}
+
+func (r *ZrokEnvironmentReconciler) reconcileDelete(ctx context.Context, env *zrokv1alpha1.ZrokEnvironment) (ctrl.Result, error) {
+	if !controllerutil.ContainsFinalizer(env, zrokv1alpha1.EnvironmentFinalizer) {
+		return ctrl.Result{}, nil
+	}
+
+	// Block delete while Shares still reference this environment.
+	shares := &zrokv1alpha1.ZrokShareList{}
+	if err := r.List(ctx, shares, client.InNamespace(env.Namespace)); err != nil {
+		return ctrl.Result{}, err
+	}
+	for i := range shares.Items {
+		s := &shares.Items[i]
+		if s.Spec.EnvironmentRef.Name != env.Name || !s.DeletionTimestamp.IsZero() {
+			continue
+		}
+		msg := fmt.Sprintf("cannot delete environment while share %s exists", s.Name)
+		status.SetCondition(&env.Status.Conditions, zrokv1alpha1.ConditionReady, metav1.ConditionFalse, "SharesExist", msg, env.Generation)
+		_ = r.Status().Update(ctx, env)
+		r.Recorder.Event(env, corev1.EventTypeWarning, "SharesExist", msg)
+		return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
+	}
+
+	// Best-effort remote disable when we know EnvZID.
+	if env.Spec.ReclaimPolicy != zrokv1alpha1.ReclaimRetain && env.Status.EnvZID != "" {
+		token, err := r.readEnableToken(ctx, env)
+		if err == nil {
+			api := env.Spec.ApiEndpoint
+			if api == "" {
+				api = zrokclient.DefaultAPIEndpoint
+			}
+			if err := r.Zrok.REST.Disable(ctx, api, token, env.Status.EnvZID); err != nil {
+				log.FromContext(ctx).Error(err, "disable environment failed; continuing cleanup")
+			}
+		}
+	}
+
+	// Delete owned Deployment / Service. PVC deleted only on ReclaimDelete.
+	_ = r.Delete(ctx, &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: agent.DeploymentName(env), Namespace: env.Namespace}})
+	_ = r.Delete(ctx, &corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: agent.ServiceName(env), Namespace: env.Namespace}})
+	if env.Spec.ReclaimPolicy != zrokv1alpha1.ReclaimRetain {
+		_ = r.Delete(ctx, &corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{Name: agent.PVCName(env), Namespace: env.Namespace}})
+	}
+
+	controllerutil.RemoveFinalizer(env, zrokv1alpha1.EnvironmentFinalizer)
+	if err := r.Update(ctx, env); err != nil {
+		return ctrl.Result{}, err
+	}
+	return ctrl.Result{}, nil
+}
+
+func (r *ZrokEnvironmentReconciler) readEnableToken(ctx context.Context, env *zrokv1alpha1.ZrokEnvironment) (string, error) {
+	ref := env.Spec.EnableTokenSecretRef
+	secret := &corev1.Secret{}
+	key := types.NamespacedName{Namespace: env.Namespace, Name: ref.Name}
+	if err := r.Get(ctx, key, secret); err != nil {
+		return "", fmt.Errorf("get enable token secret %s: %w", ref.Name, err)
+	}
+	secretKey := ref.Key
+	if secretKey == "" {
+		secretKey = zrokv1alpha1.DefaultEnableTokenKey
+	}
+	raw, ok := secret.Data[secretKey]
+	if !ok || len(raw) == 0 {
+		return "", fmt.Errorf("secret %s missing key %q", ref.Name, secretKey)
+	}
+	return string(raw), nil
+}
+
+func (r *ZrokEnvironmentReconciler) ensurePVC(ctx context.Context, env *zrokv1alpha1.ZrokEnvironment) error {
+	desired := agent.DesiredPVC(env)
+	if err := controllerutil.SetControllerReference(env, desired, r.Scheme); err != nil {
+		return err
+	}
+	existing := &corev1.PersistentVolumeClaim{}
+	err := r.Get(ctx, client.ObjectKeyFromObject(desired), existing)
+	if apierrors.IsNotFound(err) {
+		return r.Create(ctx, desired)
+	}
+	return err
+}
+
+func (r *ZrokEnvironmentReconciler) ensureService(ctx context.Context, env *zrokv1alpha1.ZrokEnvironment) error {
+	desired := agent.DesiredService(env)
+	if err := controllerutil.SetControllerReference(env, desired, r.Scheme); err != nil {
+		return err
+	}
+	existing := &corev1.Service{}
+	err := r.Get(ctx, client.ObjectKeyFromObject(desired), existing)
+	if apierrors.IsNotFound(err) {
+		return r.Create(ctx, desired)
+	}
+	if err != nil {
+		return err
+	}
+	existing.Spec.Selector = desired.Spec.Selector
+	existing.Spec.Ports = desired.Spec.Ports
+	return r.Update(ctx, existing)
+}
+
+func (r *ZrokEnvironmentReconciler) ensureDeployment(ctx context.Context, env *zrokv1alpha1.ZrokEnvironment, token string) error {
+	desired := agent.DesiredDeployment(env, token)
+	if err := controllerutil.SetControllerReference(env, desired, r.Scheme); err != nil {
+		return err
+	}
+	existing := &appsv1.Deployment{}
+	err := r.Get(ctx, client.ObjectKeyFromObject(desired), existing)
+	if apierrors.IsNotFound(err) {
+		return r.Create(ctx, desired)
+	}
+	if err != nil {
+		return err
+	}
+	existing.Spec = desired.Spec
+	existing.Labels = desired.Labels
+	return r.Update(ctx, existing)
+}
+
+func (r *ZrokEnvironmentReconciler) isAgentReady(ctx context.Context, env *zrokv1alpha1.ZrokEnvironment) (bool, error) {
+	dep := &appsv1.Deployment{}
+	if err := r.Get(ctx, types.NamespacedName{Name: agent.DeploymentName(env), Namespace: env.Namespace}, dep); err != nil {
+		return false, err
+	}
+	return dep.Status.ReadyReplicas >= 1 && dep.Status.UpdatedReplicas >= 1, nil
+}
+
+func (r *ZrokEnvironmentReconciler) setNotReady(ctx context.Context, env *zrokv1alpha1.ZrokEnvironment, reason, message string) {
+	env.Status.ObservedGeneration = env.Generation
+	env.Status.AgentReady = false
+	status.SetCondition(&env.Status.Conditions, zrokv1alpha1.ConditionReady, metav1.ConditionFalse, reason, message, env.Generation)
+	_ = r.Status().Update(ctx, env)
+}
+
+// SetupWithManager sets up the controller with the Manager.
+func (r *ZrokEnvironmentReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	return ctrl.NewControllerManagedBy(mgr).
+		For(&zrokv1alpha1.ZrokEnvironment{}).
+		Owns(&appsv1.Deployment{}).
+		Owns(&corev1.Service{}).
+		Owns(&corev1.PersistentVolumeClaim{}).
+		Named("zrokenvironment").
+		Complete(r)
+}

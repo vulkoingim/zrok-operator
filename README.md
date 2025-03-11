@@ -1,135 +1,124 @@
 # zrok-operator
-// TODO(user): Add simple overview of use/purpose
 
-## Description
-// TODO(user): An in-depth paragraph about your project and overview of use
+Kubernetes operator that exposes in-cluster Services through [zrok/v2](https://github.com/openziti/zrok) public (and private) shares.
 
-## Getting Started
+This is a **client-side** operator (enable → agent → share), complementary to the official server chart [`openziti/zrok2`](https://netfoundry.io/docs/zrok/self-hosting/deployment/kubernetes). It does **not** deploy the zrok controller or frontend.
 
-### Prerequisites
-- go version v1.23.0+
-- docker version 17.03+.
-- kubectl version v1.11.3+.
-- Access to a Kubernetes v1.11.3+ cluster.
+## Architecture
 
-### To Deploy on the cluster
-**Build and push your image to the location specified by `IMG`:**
-
-```sh
-make docker-build docker-push IMG=<some-registry>/zrok-operator:tag
+```
+ZrokEnvironment  →  PVC + zrok2 agent Deployment (data plane)
+ZrokShare        →  agent SharePublic via HTTP console gateway (:8888)
+ZrokAccess       →  agent AccessPrivate (private share consumer)
 ```
 
-**NOTE:** This image ought to be published in the personal registry you specified.
-And it is required to have access to pull the image from the working environment.
-Make sure you have the proper permission to the registry if the above commands don’t work.
+Manager talks to the agent over the TCP HTTP console (`/v1/agent/*`) because agent gRPC is unix-socket-only.
 
-**Install the CRDs into the cluster:**
+## Quickstart (Kind)
 
-```sh
-make install
+```bash
+# Build & load
+make docker-build IMG=zrok-operator:dev
+kind load docker-image zrok-operator:dev
+
+# Install CRDs + manager
+make deploy IMG=zrok-operator:dev
+
+# Credentials (zrok.io or self-hosted enable token)
+kubectl create secret generic zrok-credentials \
+  --from-literal=enable-token="$ZROK2_ENABLE_TOKEN"
+
+# Sample Environment + Share (edit nameSelection.name to be unique)
+kubectl apply -f config/samples/zrok_v1alpha1_environment_share.yaml
+
+kubectl wait --for=condition=Ready zrokenvironment/default --timeout=180s
+kubectl wait --for=condition=Ready zrokshare/nginx --timeout=180s
+kubectl get zrokshare nginx -o jsonpath='{.status.assignedURL}{"\n"}'
 ```
 
-**Deploy the Manager to the cluster with the image specified by `IMG`:**
+### Self-hosted zrok
 
-```sh
-make deploy IMG=<some-registry>/zrok-operator:tag
+1. Install OpenZiti + [`openziti/zrok2`](https://netfoundry.io/docs/zrok/self-hosting/deployment/kubernetes).
+2. Read the ziggy token: `kubectl -n zrok2 get secret zrok2-ziggy-account-token -o jsonpath='{.data.token}' | base64 -d`
+3. Set `spec.apiEndpoint` on `ZrokEnvironment` to your controller URL (e.g. `https://zrok2.share.example.com`).
+
+## CRDs
+
+### ZrokEnvironment
+
+Owns agent PVC + Deployment. Requires `enableTokenSecretRef`.
+
+### ZrokShare
+
+```yaml
+spec:
+  environmentRef: { name: default }
+  shareMode: public          # public|private
+  backendMode: proxy         # proxy|web|caddy|drive|tcpTunnel|udpTunnel|socks
+  upstream: { url: http://mysvc.ns.svc:80 }
+  nameSelection:             # strongly recommended (agent auto-restart)
+    namespace: public
+    name: myapp
+  basicAuthSecretRef: { name: my-basic-auth }   # keys: username, password
+  oauth:
+    provider: google
+    emailDomains: ["example.com"]
 ```
 
-> **NOTE**: If you encounter RBAC errors, you may need to grant yourself cluster-admin
-privileges or be logged in as admin.
+Reserved names use the v2 namespaces/names model (not v1 `reserve`). See [migrate v1→v2](https://netfoundry.io/docs/zrok/how-tos/migration/migrate-v1-to-v2/).
 
-**Create instances of your solution**
-You can apply the samples (examples) from the config/sample:
+### ZrokAccess
 
-```sh
-kubectl apply -k config/samples/
+Private-share consumer via the agent.
+
+## Helm
+
+```bash
+helm upgrade --install zrok-operator ./charts/zrok-operator \
+  -n zrok-operator --create-namespace \
+  --set image.repository=zrok-operator \
+  --set image.tag=dev
 ```
 
->**NOTE**: Ensure that the samples has default values to test it out.
+Prefer a pre-created Secret over `--set credentials.enableToken=...`.
 
-### To Uninstall
-**Delete the instances (CRs) from the cluster:**
+## Development
 
-```sh
-kubectl delete -k config/samples/
+```bash
+mise install                 # tools: go, controller-gen, kind, helm, …
+mise tasks                   # list
+mise run gen                 # deepcopy + CRDs + helm crds/
+mise run test                # unit + envtest via gotestsum
+mise run build               # bin/manager
+mise run kind-up && mise run deploy
+mise run test-e2e            # Kind e2e; set ZROK2_ENABLE_TOKEN for live share
+mise run samples --secret    # apply sample CRs (creates secret from env)
 ```
 
-**Delete the APIs(CRDs) from the cluster:**
+Longer flows live under `.mise-tasks/`; short ones in `mise.toml`. Makefile targets still work if you prefer them.
 
-```sh
-make uninstall
+```bash
+make generate manifests
+make test
+make run
 ```
 
-**UnDeploy the controller from the cluster:**
+## Ingress translation
 
-```sh
-make undeploy
-```
+Create an Ingress with `ingressClassName: zrok` (see `config/samples/ingress_zrok.yaml`). Annotations:
 
-## Project Distribution
+| Annotation | Purpose |
+|---|---|
+| `zrok.k8s.zrok.io/environment` | ZrokEnvironment name (default `default`) |
+| `zrok.k8s.zrok.io/name` | Reserved frontend name |
+| `zrok.k8s.zrok.io/namespace-token` | Namespace token (default `public`) |
 
-Following the options to release and provide this solution to the users.
+The controller creates an owned `ZrokShare` and mirrors `status.assignedURL` onto the Ingress load balancer hostname.
 
-### By providing a bundle with all YAML files
+## Metrics
 
-1. Build the installer for the image built and published in the registry:
+- `zrok_share_ready`
+- `zrok_share_reconcile_errors`
+- `zrok_environment_ready`
 
-```sh
-make build-installer IMG=<some-registry>/zrok-operator:tag
-```
-
-**NOTE:** The makefile target mentioned above generates an 'install.yaml'
-file in the dist directory. This file contains all the resources built
-with Kustomize, which are necessary to install this project without its
-dependencies.
-
-2. Using the installer
-
-Users can just run 'kubectl apply -f <URL for YAML BUNDLE>' to install
-the project, i.e.:
-
-```sh
-kubectl apply -f https://raw.githubusercontent.com/<org>/zrok-operator/<tag or branch>/dist/install.yaml
-```
-
-### By providing a Helm Chart
-
-1. Build the chart using the optional helm plugin
-
-```sh
-kubebuilder edit --plugins=helm/v1-alpha
-```
-
-2. See that a chart was generated under 'dist/chart', and users
-can obtain this solution from there.
-
-**NOTE:** If you change the project, you need to update the Helm Chart
-using the same command above to sync the latest changes. Furthermore,
-if you create webhooks, you need to use the above command with
-the '--force' flag and manually ensure that any custom configuration
-previously added to 'dist/chart/values.yaml' or 'dist/chart/manager/manager.yaml'
-is manually re-applied afterwards.
-
-## Contributing
-// TODO(user): Add detailed information on how you would like others to contribute to this project
-
-**NOTE:** Run `make help` for more information on all potential `make` targets
-
-More information can be found via the [Kubebuilder Documentation](https://book.kubebuilder.io/introduction.html)
-
-## License
-
-Copyright 2025.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-
+Enable Prometheus `ServiceMonitor` via Helm `metrics.serviceMonitor.enabled=true`.

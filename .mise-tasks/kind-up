@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+#MISE description="Create Kind cluster if missing"
+#USAGE flag "--name <name>" help="Kind cluster name" default="kind"
+set -euo pipefail
+
+NAME="${usage_name:-kind}"
+if kind get clusters 2>/dev/null | grep -qx "$NAME"; then
+  echo "Kind cluster '$NAME' already exists"
+  exit 0
+fi
+
+echo "Creating Kind cluster '$NAME'"
+kind create cluster --name "$NAME"

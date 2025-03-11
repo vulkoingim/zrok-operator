@@ -1,0 +1,10 @@
+apiVersion: zrok.k8s.zrok.io/v1alpha1
+kind: ZrokAccess
+metadata:
+  name: demo-access
+  namespace: default
+spec:
+  environmentRef:
+    name: default
+  shareToken: REPLACE_WITH_PRIVATE_SHARE_TOKEN
+  bindAddress: "0.0.0.0:0"

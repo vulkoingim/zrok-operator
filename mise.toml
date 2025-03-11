@@ -1,0 +1,94 @@
+[tools]
+go = "1.26"
+"go:gotest.tools/gotestsum" = "latest"
+"go:github.com/vektra/mockery/v3" = "latest"
+"go:sigs.k8s.io/controller-tools/cmd/controller-gen" = "v0.17.2"
+"go:sigs.k8s.io/controller-runtime/tools/setup-envtest" = "release-0.24"
+golangci-lint = "latest"
+kubectl = "latest"
+kind = "latest"
+helm = "latest"
+kustomize = "5.5.0"
+kubebuilder = "latest"
+yq = "latest"
+kubeconform = "latest"
+
+[vars]
+IMG = "zrok-operator:dev"
+ENVTEST_K8S_VERSION = "1.36"
+
+# --- short tasks -----------------------------------------------------------
+
+[tasks.fmt]
+description = "go fmt"
+run = "go fmt ./..."
+
+[tasks.vet]
+description = "go vet"
+run = "go vet ./..."
+
+[tasks.generate]
+description = "Generate DeepCopy methods"
+run = "controller-gen object:headerFile=hack/boilerplate.go.txt paths=./..."
+
+[tasks.manifests]
+description = "Generate CRDs + RBAC"
+run = "controller-gen rbac:roleName=manager-role crd webhook paths=./... output:crd:artifacts:config=config/crd/bases"
+
+[tasks.gen]
+description = "generate + manifests + sync Helm CRDs"
+depends = ["generate", "manifests"]
+run = "cp config/crd/bases/*.yaml charts/zrok-operator/crds/"
+
+[tasks.build]
+description = "Build manager binary to bin/manager"
+depends = ["gen", "fmt", "vet"]
+run = "mkdir -p bin && go build -o bin/manager cmd/main.go"
+
+[tasks.run]
+description = "Run manager against current kubecontext"
+depends = ["gen"]
+run = "go run ./cmd/main.go"
+
+[tasks.test]
+description = "Unit + envtest (excludes e2e)"
+depends = ["gen", "fmt", "vet"]
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT="$(git rev-parse --show-toplevel)"
+BIN_DIR="$ROOT/bin"
+ASSETS="$(setup-envtest use "{{vars.ENVTEST_K8S_VERSION}}" --bin-dir "$BIN_DIR" -p path)"
+KUBEBUILDER_ASSETS="$ASSETS" gotestsum --format testdox -- \
+  $(go list ./... | grep -v /e2e) -coverprofile cover.out
+'''
+
+[tasks.test-verbose]
+description = "Verbose unit + envtest"
+depends = ["gen"]
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT="$(git rev-parse --show-toplevel)"
+BIN_DIR="$ROOT/bin"
+ASSETS="$(setup-envtest use "{{vars.ENVTEST_K8S_VERSION}}" --bin-dir "$BIN_DIR" -p path)"
+KUBEBUILDER_ASSETS="$ASSETS" gotestsum --format standard-verbose -- \
+  $(go list ./... | grep -v /e2e) -coverprofile cover.out
+'''
+
+[tasks.lint]
+description = "golangci-lint"
+run = "golangci-lint run"
+
+[tasks.lint-fix]
+description = "golangci-lint --fix"
+run = "golangci-lint run --fix"
+
+[tasks.install]
+description = "Install CRDs into current cluster"
+depends = ["manifests"]
+run = "kubectl apply -f config/crd/bases"
+
+[tasks.uninstall]
+description = "Remove CRDs from current cluster"
+run = "kubectl delete -f config/crd/bases --ignore-not-found=true"

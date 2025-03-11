@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+#MISE description="Validate CRDs with kubeconform"
+#MISE depends=["manifests"]
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+kubeconform -summary -strict config/crd/bases/*.yaml
+kubeconform -summary config/samples/*.yaml || true

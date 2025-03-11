@@ -1,0 +1,59 @@
+# Default values for zrok-operator.
+replicaCount: 1
+
+image:
+  repository: ghcr.io/vulkoingim/zrok-operator
+  pullPolicy: IfNotPresent
+  tag: ""
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# Install CRDs are shipped under charts/zrok-operator/crds/ (Helm installs them on first install).
+installCRDs: true
+
+# Default zrok API endpoint used when Environment.spec.apiEndpoint is empty
+# (operator itself does not require a global endpoint; Environments set their own).
+apiEndpoint: ""
+
+# Prefer creating the Secret out-of-band:
+#   kubectl create secret generic zrok-credentials \
+#     --from-literal=enable-token=$ZROK2_ENABLE_TOKEN
+# Inline token creation is for quickstarts only.
+credentials:
+  secretName: ""
+  create: false
+  enableToken: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+rbac:
+  create: true
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 256Mi
+  requests:
+    cpu: 50m
+    memory: 128Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+leaderElect: true
+
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: false
+    labels: {}
+
+# Agent defaults applied via sample docs (not chart-managed Deployments).
+agent:
+  image: docker.io/openziti/zrok2:v2.0.4

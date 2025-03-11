@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+#MISE description="Undeploy operator from current cluster"
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+kustomize build config/default | kubectl delete --ignore-not-found=true -f -

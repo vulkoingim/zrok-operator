@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: zrok-credentials
+  namespace: default
+type: Opaque
+stringData:
+  enable-token: "REPLACE_WITH_ZROK2_ENABLE_TOKEN"
+---
+apiVersion: zrok.k8s.zrok.io/v1alpha1
+kind: ZrokEnvironment
+metadata:
+  name: default
+  namespace: default
+spec:
+  # apiEndpoint: https://api-v2.zrok.io  # default; set for self-hosted openziti/zrok2 chart
+  enableTokenSecretRef:
+    name: zrok-credentials
+    key: enable-token
+  reclaimPolicy: Delete
+  agent:
+    consolePort: 8888
+---
+apiVersion: zrok.k8s.zrok.io/v1alpha1
+kind: ZrokShare
+metadata:
+  name: nginx
+  namespace: default
+spec:
+  environmentRef:
+    name: default
+  shareMode: public
+  backendMode: proxy
+  upstream:
+    url: http://nginx.default.svc:80
+  nameSelection:
+    namespace: public
+    name: nginx-demo
+  reclaimPolicy: Delete

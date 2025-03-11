@@ -33,3 +33,7 @@ go.work.sum
 python/models
 python
 .idea
+secrets
+bin/*
+.cursor
+.serena

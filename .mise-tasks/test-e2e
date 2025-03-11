@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+#MISE description="Kind e2e: build, load, run test/e2e (live share if ZROK2_ENABLE_TOKEN set)"
+#MISE depends=["kind-up", "kind-load", "gen"]
+#USAGE flag "--img <img>" help="Image tag" default="zrok-operator:dev"
+set -euo pipefail
+
+IMG="${usage_img:-${IMG:-zrok-operator:dev}}"
+export IMG
+
+cd "$(git rev-parse --show-toplevel)"
+
+if ! kind get clusters 2>/dev/null | grep -qx kind; then
+  echo "No kind cluster; run: mise run kind-up" >&2
+  exit 1
+fi
+
+echo "Running e2e (IMG=$IMG)"
+if [[ -n "${ZROK2_ENABLE_TOKEN:-}" ]]; then
+  echo "ZROK2_ENABLE_TOKEN is set — live share suite will run"
+else
+  echo "ZROK2_ENABLE_TOKEN unset — live share suite will Skip"
+fi
+
+go test ./test/e2e/ -v -ginkgo.v

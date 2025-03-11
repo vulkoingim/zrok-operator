@@ -1,0 +1,14 @@
+apiVersion: v2
+name: zrok-operator
+description: Kubernetes operator that exposes cluster Services via zrok/v2 shares
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/vulkoingim/zrok-operator
+keywords:
+  - zrok
+  - openziti
+  - operator
+  - kubernetes
+sources:
+  - https://github.com/vulkoingim/zrok-operator

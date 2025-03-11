@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+#MISE description="Helm package chart (copies CRDs into chart first)"
+#MISE depends=["gen"]
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+mkdir -p dist charts/zrok-operator/crds
+cp config/crd/bases/*.yaml charts/zrok-operator/crds/
+helm package charts/zrok-operator -d dist
+ls -la dist/*.tgz

@@ -7,4 +7,32 @@ layout:
 - go.kubebuilder.io/v4
 projectName: zrok-operator
 repo: github.com/vulkoingim/zrok-operator
+resources:
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: k8s.zrok.io
+  group: zrok
+  kind: ZrokEnvironment
+  path: github.com/vulkoingim/zrok-operator/api/v1alpha1
+  version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: k8s.zrok.io
+  group: zrok
+  kind: ZrokShare
+  path: github.com/vulkoingim/zrok-operator/api/v1alpha1
+  version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: k8s.zrok.io
+  group: zrok
+  kind: ZrokAccess
+  path: github.com/vulkoingim/zrok-operator/api/v1alpha1
+  version: v1alpha1
 version: "3"

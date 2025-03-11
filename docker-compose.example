@@ -1,0 +1,95 @@
+services:
+  homeassistant:
+    container_name: homeassistant
+    image: "ghcr.io/home-assistant/home-assistant:stable"
+    volumes:
+      - /opt/stacks/hass/hass-config:/config
+      - /etc/localtime:/etc/localtime:ro
+      - /run/dbus:/run/dbus:ro
+      - /data/video:/nvr
+    restart: unless-stopped
+    privileged: true
+    network_mode: host
+    devices:
+      - /dev/dri:/dev/dri
+
+  nodered:
+    container_name: nodered
+    image: nodered/node-red
+    ports:
+      - 1880:1880
+    volumes:
+      - /opt/stacks/hass/nodered:/data
+    depends_on:
+      - homeassistant
+      - mosquitto
+    restart: unless-stopped
+
+  mosquitto:
+    image: eclipse-mosquitto
+    container_name: mosquitto
+    restart: unless-stopped
+    ports:
+      - 1883:1883
+      - 9001:9001
+    volumes:
+      - "/opt/stacks/hass/mosquitto/config:/mosquitto/config"
+      - "/opt/stacks/hass/mosquitto/data:/mosquitto/data"
+      - "/opt/stacks/hass/mosquitto/log:/mosquitto/log"
+    environment:
+      - TZ=Europe/Sofia
+    user: "1883:1883"
+
+  hass-configurator:
+    image: "causticlab/hass-configurator-docker:latest"
+    restart: always
+    ports:
+      - "3218:3218/tcp"
+    volumes:
+      - "/opt/stacks/hass/configurator-config:/config"
+      - "/opt/stacks/hass/hass-config:/hass-config"
+
+  # set file ownership
+  zrok-init:
+    image: busybox
+    # matches uid:gid of "nobody" in zrok container image
+    command: chown -Rc 65534:65534 /mnt/
+    user: root
+    volumes:
+      - /opt/stacks/hass/zrok:/mnt
+
+  # enable zrok environment
+  zrok-enable:
+    image: ${ZROK_CONTAINER_IMAGE:-docker.io/openziti/zrok}
+    depends_on:
+      zrok-init:
+        condition: service_completed_successfully
+    entrypoint: zrok-enable.bash
+    user: 65534:65534
+    volumes:
+      - /opt/stacks/hass/zrok:/mnt
+    environment:
+      STATE_DIRECTORY: /mnt
+      ZROK_ENABLE_TOKEN: TOKEN
+      ZROK_ENVIRONMENT_NAME: mnt
+
+  # reserve zrok frontend subdomain and start sharing the target
+  zrok-share:
+    image: ${ZROK_CONTAINER_IMAGE:-docker.io/openziti/zrok}
+    restart: unless-stopped
+    entrypoint: zrok-share.bash
+    user: 65534:65534
+    network_mode: host
+    depends_on:
+      zrok-enable:
+        condition: service_completed_successfully
+    volumes:
+      - /opt/stacks/hass/zrok:/mnt
+    environment:
+      # internal configuration
+      STATE_DIRECTORY: /mnt  # zrok homedir in container
+
+      # most relevant options
+      ZROK_BACKEND_MODE:    proxy # web, caddy, drive, proxy
+      ZROK_TARGET:          "http://127.0.0.1:8123" # backend target, is a path in container filesystem unless proxy mode
+      PFXLOG_NO_JSON: "true"  # suppress JSON logging format

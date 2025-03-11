@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+#MISE description="Apply sample Environment+Share (needs zrok-credentials secret)"
+#USAGE flag "--secret" help="Also create zrok-credentials from ZROK2_ENABLE_TOKEN"
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+
+if [[ "${usage_secret:-false}" == "true" ]]; then
+  if [[ -z "${ZROK2_ENABLE_TOKEN:-}" ]]; then
+    echo "ZROK2_ENABLE_TOKEN required with --secret" >&2
+    exit 1
+  fi
+  kubectl create secret generic zrok-credentials \
+    --from-literal=enable-token="$ZROK2_ENABLE_TOKEN" \
+    --dry-run=client -o yaml | kubectl apply -f -
+fi
+
+kubectl apply -f config/samples/zrok_v1alpha1_environment_share.yaml
+echo "Waiting for Environment Ready..."
+kubectl wait --for=condition=Ready zrokenvironment/default --timeout=180s
+echo "Waiting for Share Ready..."
+kubectl wait --for=condition=Ready zrokshare/nginx --timeout=180s
+kubectl get zrokshare nginx -o jsonpath='{.status.assignedURL}{"\n"}'

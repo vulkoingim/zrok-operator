@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+#MISE description="Load manager image into Kind"
+#MISE depends=["docker-build"]
+#USAGE flag "--img <img>" help="Image tag" default="zrok-operator:dev"
+#USAGE flag "--name <name>" help="Kind cluster name" default="kind"
+set -euo pipefail
+
+IMG="${usage_img:-${IMG:-zrok-operator:dev}}"
+NAME="${usage_name:-kind}"
+
+echo "Loading $IMG into kind/$NAME"
+kind load docker-image "$IMG" --name "$NAME"
