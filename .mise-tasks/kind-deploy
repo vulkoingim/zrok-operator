@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+#MISE description="Build local image, load into Kind, deploy operator"
+#MISE depends=["gen"]
+#USAGE flag "--img <img>" help="Image tag" default="zrok-operator:dev"
+#USAGE flag "--name <name>" help="Kind cluster name" default="kind"
+set -euo pipefail
+
+IMG="${usage_img:-${IMG:-zrok-operator:dev}}"
+NAME="${usage_name:-kind}"
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT"
+
+echo "==> docker build $IMG"
+docker build -t "$IMG" .
+
+if ! kind get clusters 2>/dev/null | grep -qx "$NAME"; then
+  echo "==> kind create cluster --name $NAME"
+  kind create cluster --name "$NAME"
+fi
+
+echo "==> kind load docker-image $IMG --name $NAME"
+kind load docker-image "$IMG" --name "$NAME"
+
+echo "==> deploy $IMG"
+cd config/manager
+kustomize edit set image controller="$IMG"
+cd ../..
+kustomize build config/default | kubectl apply -f -
+
+# Same tag + IfNotPresent won't restart pods; force pick up kind-loaded digest.
+kubectl -n zrok-operator-system rollout restart deploy/zrok-operator-controller-manager
+
+echo "==> wait for rollout"
+kubectl -n zrok-operator-system rollout status deploy/zrok-operator-controller-manager --timeout=180s
+
+echo "Done. Image $IMG is local-only (imagePullPolicy=IfNotPresent after kind load)."

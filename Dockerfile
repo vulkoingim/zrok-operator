@@ -1,11 +1,12 @@
 # Build the manager binary
-FROM docker.io/golang:1.25 AS builder
+FROM docker.io/golang:1.26 AS builder
 ARG TARGETOS
 ARG TARGETARCH
 
 WORKDIR /workspace
 COPY go.mod go.mod
 COPY go.sum go.sum
+ENV GOTOOLCHAIN=auto
 RUN go mod download
 
 COPY cmd/main.go cmd/main.go

@@ -32,12 +32,15 @@ func TestDesiredResources(t *testing.T) {
 	if got := DeploymentName(env); got != "default-agent" {
 		t.Fatalf("deployment name: %s", got)
 	}
-	if got := AgentBaseURL(env); got != "http://default-agent.demo.svc:8888" {
-		t.Fatalf("base url: %s", got)
+	if got := AgentDialAddr(env); got != "default-agent.demo.svc:7777" {
+		t.Fatalf("dial addr: %s", got)
 	}
 	dep := DesiredDeployment(env, "tok")
-	if len(dep.Spec.Template.Spec.InitContainers) != 2 {
-		t.Fatalf("expected 2 init containers")
+	if len(dep.Spec.Template.Spec.InitContainers) != 1 {
+		t.Fatalf("expected 1 init container (enable), got %d", len(dep.Spec.Template.Spec.InitContainers))
+	}
+	if dep.Spec.Template.Spec.InitContainers[0].Name != "zrok-enable" {
+		t.Fatalf("unexpected init: %s", dep.Spec.Template.Spec.InitContainers[0].Name)
 	}
 	if dep.Spec.Template.Spec.Containers[0].Name != AppName {
 		t.Fatalf("unexpected container")

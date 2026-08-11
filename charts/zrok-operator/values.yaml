@@ -56,4 +56,4 @@ metrics:
 
 # Agent defaults applied via sample docs (not chart-managed Deployments).
 agent:
-  image: docker.io/openziti/zrok2:v2.0.4
+  image: docker.io/openziti/zrok2:2.0.4

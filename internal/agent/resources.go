@@ -31,7 +31,10 @@ import (
 
 const (
 	// DefaultImage is the pinned zrok2 agent image.
-	DefaultImage = "docker.io/openziti/zrok2:v2.0.4"
+	DefaultImage = "docker.io/openziti/zrok2:2.0.4"
+
+	// DefaultSocatImage proxies TCP→unix for native agent gRPC.
+	DefaultSocatImage = "docker.io/alpine/socat:1.8.0.3"
 
 	// ZrokUID is the non-root user in the openziti/zrok2 image.
 	ZrokUID int64 = 2171
@@ -39,7 +42,11 @@ const (
 	// AppName is the agent app label / container name.
 	AppName = "zrok-agent"
 
+	// DefaultGRPCPort is the TCP port that proxies to agent.socket.
+	DefaultGRPCPort int32 = 7777
+
 	homeMountPath = "/mnt"
+	agentSocket   = homeMountPath + "/.zrok2/agent.socket"
 	pvcNameSuffix = "-zrok-home"
 	deploySuffix  = "-agent"
 	svcSuffix     = "-agent"
@@ -79,9 +86,19 @@ func ConsolePort(env *zrokv1alpha1.ZrokEnvironment) int32 {
 	return 8888
 }
 
-// AgentBaseURL returns the in-cluster HTTP base URL for the agent console.
+// GRPCPort returns the TCP port that proxies to the agent unix socket.
+func GRPCPort(_ *zrokv1alpha1.ZrokEnvironment) int32 {
+	return DefaultGRPCPort
+}
+
+// AgentDialAddr returns host:port for native agent gRPC (TCP→unix proxy).
+func AgentDialAddr(env *zrokv1alpha1.ZrokEnvironment) string {
+	return fmt.Sprintf("%s.%s.svc:%d", ServiceName(env), env.Namespace, GRPCPort(env))
+}
+
+// AgentBaseURL is an alias for AgentDialAddr (kept for call-site stability).
 func AgentBaseURL(env *zrokv1alpha1.ZrokEnvironment) string {
-	return fmt.Sprintf("http://%s.%s.svc:%d", ServiceName(env), env.Namespace, ConsolePort(env))
+	return AgentDialAddr(env)
 }
 
 // Image returns the agent container image.
@@ -117,9 +134,10 @@ func DesiredPVC(env *zrokv1alpha1.ZrokEnvironment) *corev1.PersistentVolumeClaim
 	return pvc
 }
 
-// DesiredService builds the agent Service exposing the HTTP console.
+// DesiredService builds the agent Service (HTTP console + gRPC proxy).
 func DesiredService(env *zrokv1alpha1.ZrokEnvironment) *corev1.Service {
-	port := ConsolePort(env)
+	consolePort := ConsolePort(env)
+	grpcPort := GRPCPort(env)
 	return &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      ServiceName(env),
@@ -128,12 +146,20 @@ func DesiredService(env *zrokv1alpha1.ZrokEnvironment) *corev1.Service {
 		},
 		Spec: corev1.ServiceSpec{
 			Selector: Labels(env),
-			Ports: []corev1.ServicePort{{
-				Name:       "console",
-				Port:       port,
-				TargetPort: intstr.FromInt32(port),
-				Protocol:   corev1.ProtocolTCP,
-			}},
+			Ports: []corev1.ServicePort{
+				{
+					Name:       "console",
+					Port:       consolePort,
+					TargetPort: intstr.FromInt32(consolePort),
+					Protocol:   corev1.ProtocolTCP,
+				},
+				{
+					Name:       "grpc",
+					Port:       grpcPort,
+					TargetPort: intstr.FromInt32(grpcPort),
+					Protocol:   corev1.ProtocolTCP,
+				},
+			},
 		},
 	}
 }
@@ -199,8 +225,9 @@ func DesiredDeployment(env *zrokv1alpha1.ZrokEnvironment, enableToken string) *a
 
 	volMount := corev1.VolumeMount{Name: "zrok-home", MountPath: homeMountPath}
 	portStr := fmt.Sprintf("%d", port)
-	rootUser := int64(0)
-	initNoPrivEsc := false
+	grpcPort := GRPCPort(env)
+	// PVC ownership comes from PodSecurityContext.FSGroup (2171). Do not run a root
+	// chown init — pod runAsNonRoot=true rejects UID 0 (CreateContainerConfigError).
 
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
@@ -218,21 +245,6 @@ func DesiredDeployment(env *zrokv1alpha1.ZrokEnvironment, enableToken string) *a
 					SecurityContext: podSec,
 					InitContainers: []corev1.Container{
 						{
-							Name:            "zrok-init",
-							Image:           "docker.io/library/busybox:1.36",
-							ImagePullPolicy: corev1.PullIfNotPresent,
-							Command:         []string{"sh", "-c", "chown -Rc 2171:2171 /mnt/"},
-							SecurityContext: &corev1.SecurityContext{
-								RunAsUser:                &rootUser,
-								AllowPrivilegeEscalation: &initNoPrivEsc,
-								Capabilities: &corev1.Capabilities{
-									Drop: []corev1.Capability{"ALL"},
-									Add:  []corev1.Capability{"CHOWN"},
-								},
-							},
-							VolumeMounts: []corev1.VolumeMount{volMount},
-						},
-						{
 							Name:            "zrok-enable",
 							Image:           image,
 							ImagePullPolicy: corev1.PullIfNotPresent,
@@ -242,47 +254,79 @@ func DesiredDeployment(env *zrokv1alpha1.ZrokEnvironment, enableToken string) *a
 							VolumeMounts:    []corev1.VolumeMount{volMount},
 						},
 					},
-					Containers: []corev1.Container{{
-						Name:            AppName,
-						Image:           image,
-						ImagePullPolicy: corev1.PullIfNotPresent,
-						Command: []string{
-							"bash", "-c",
-							`rm -f /mnt/.zrok2/agent.socket && exec zrok2 agent start --console-address 0.0.0.0 --console-start-port "$PORT" --console-end-port "$PORT"`,
+					Containers: []corev1.Container{
+						{
+							Name:            AppName,
+							Image:           image,
+							ImagePullPolicy: corev1.PullIfNotPresent,
+							Command: []string{
+								"bash", "-c",
+								`rm -f /mnt/.zrok2/agent.socket && exec zrok2 agent start --console-address 0.0.0.0 --console-start-port "$PORT" --console-end-port "$PORT"`,
+							},
+							Env: []corev1.EnvVar{
+								{Name: "HOME", Value: homeMountPath},
+								{Name: "PORT", Value: portStr},
+							},
+							Ports: []corev1.ContainerPort{{
+								Name:          "console",
+								ContainerPort: port,
+								Protocol:      corev1.ProtocolTCP,
+							}},
+							Resources:       resources,
+							SecurityContext: secCtx,
+							VolumeMounts:    []corev1.VolumeMount{volMount},
+							ReadinessProbe: &corev1.Probe{
+								ProbeHandler: corev1.ProbeHandler{
+									HTTPGet: &corev1.HTTPGetAction{
+										Path: "/v1/agent/version",
+										Port: intstr.FromInt32(port),
+									},
+								},
+								InitialDelaySeconds: 5,
+								PeriodSeconds:       10,
+							},
+							LivenessProbe: &corev1.Probe{
+								ProbeHandler: corev1.ProbeHandler{
+									HTTPGet: &corev1.HTTPGetAction{
+										Path: "/v1/agent/version",
+										Port: intstr.FromInt32(port),
+									},
+								},
+								InitialDelaySeconds: 15,
+								PeriodSeconds:       20,
+							},
 						},
-						Env: []corev1.EnvVar{
-							{Name: "HOME", Value: homeMountPath},
-							{Name: "PORT", Value: portStr},
-						},
-						Ports: []corev1.ContainerPort{{
-							Name:          "console",
-							ContainerPort: port,
-							Protocol:      corev1.ProtocolTCP,
-						}},
-						Resources:       resources,
-						SecurityContext: secCtx,
-						VolumeMounts:    []corev1.VolumeMount{volMount},
-						ReadinessProbe: &corev1.Probe{
-							ProbeHandler: corev1.ProbeHandler{
-								HTTPGet: &corev1.HTTPGetAction{
-									Path: "/v1/agent/version",
-									Port: intstr.FromInt32(port),
+						{
+							// Agent gRPC is unix-socket-only; proxy it to TCP for the manager.
+							Name:            "grpc-proxy",
+							Image:           DefaultSocatImage,
+							ImagePullPolicy: corev1.PullIfNotPresent,
+							Command: []string{
+								"sh", "-c",
+								fmt.Sprintf(
+									`while [ ! -S %s ]; do sleep 1; done; exec socat TCP-LISTEN:%d,fork,reuseaddr,bind=0.0.0.0 UNIX-CONNECT:%s`,
+									agentSocket, grpcPort, agentSocket,
+								),
+							},
+							Ports: []corev1.ContainerPort{{
+								Name:          "grpc",
+								ContainerPort: grpcPort,
+								Protocol:      corev1.ProtocolTCP,
+							}},
+							SecurityContext: secCtx,
+							VolumeMounts:    []corev1.VolumeMount{volMount},
+							Resources: corev1.ResourceRequirements{
+								Requests: corev1.ResourceList{
+									corev1.ResourceCPU:    resource.MustParse("10m"),
+									corev1.ResourceMemory: resource.MustParse("16Mi"),
+								},
+								Limits: corev1.ResourceList{
+									corev1.ResourceCPU:    resource.MustParse("100m"),
+									corev1.ResourceMemory: resource.MustParse("64Mi"),
 								},
 							},
-							InitialDelaySeconds: 5,
-							PeriodSeconds:       10,
 						},
-						LivenessProbe: &corev1.Probe{
-							ProbeHandler: corev1.ProbeHandler{
-								HTTPGet: &corev1.HTTPGetAction{
-									Path: "/v1/agent/version",
-									Port: intstr.FromInt32(port),
-								},
-							},
-							InitialDelaySeconds: 15,
-							PeriodSeconds:       20,
-						},
-					}},
+					},
 					Volumes: []corev1.Volume{{
 						Name: "zrok-home",
 						VolumeSource: corev1.VolumeSource{

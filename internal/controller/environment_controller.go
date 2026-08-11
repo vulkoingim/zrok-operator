@@ -30,6 +30,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -235,6 +236,10 @@ func (r *ZrokEnvironmentReconciler) ensureService(ctx context.Context, env *zrok
 	if err != nil {
 		return err
 	}
+	if apiequality.Semantic.DeepEqual(existing.Spec.Selector, desired.Spec.Selector) &&
+		apiequality.Semantic.DeepEqual(existing.Spec.Ports, desired.Spec.Ports) {
+		return nil
+	}
 	existing.Spec.Selector = desired.Spec.Selector
 	existing.Spec.Ports = desired.Spec.Ports
 	return r.Update(ctx, existing)
@@ -252,6 +257,10 @@ func (r *ZrokEnvironmentReconciler) ensureDeployment(ctx context.Context, env *z
 	}
 	if err != nil {
 		return err
+	}
+	if apiequality.Semantic.DeepEqual(existing.Spec, desired.Spec) &&
+		apiequality.Semantic.DeepEqual(existing.Labels, desired.Labels) {
+		return nil
 	}
 	existing.Spec = desired.Spec
 	existing.Labels = desired.Labels

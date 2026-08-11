@@ -7,7 +7,7 @@ You may obtain a copy of the License at
 
     http://www.apache.org/licenses/LICENSE-2.0
 
-Unless required by applicable law or agreed to in writing, software
+    10|Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
@@ -17,16 +17,14 @@ limitations under the License.
 package zrokclient
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
+	"github.com/go-openapi/runtime"
 	"github.com/go-openapi/strfmt"
 	"github.com/openziti/zrok/v2/environment"
 	"github.com/openziti/zrok/v2/environment/env_core"
@@ -38,8 +36,6 @@ import (
 )
 
 const DefaultAPIEndpoint = "https://api-v2.zrok.io"
-
-const jsonKeyToken = "token"
 
 // NameSelection is a reserved name binding.
 type NameSelection struct {
@@ -111,14 +107,15 @@ type RESTClient interface {
 	DeleteShareName(ctx context.Context, apiEndpoint, accountToken, namespaceToken, name string) error
 }
 
-// AgentClient talks to a zrok2 agent HTTP console (gRPC-gateway).
+// AgentClient talks to a zrok2 agent over native gRPC (agentGrpc).
+// addr is host:port of the TCP→unix proxy (see agent.AgentDialAddr).
 type AgentClient interface {
-	Status(ctx context.Context, baseURL string) (*AgentStatus, error)
-	SharePublic(ctx context.Context, baseURL string, req SharePublicRequest) (*SharePublicResponse, error)
-	SharePrivate(ctx context.Context, baseURL string, req SharePrivateRequest) (*SharePrivateResponse, error)
-	ReleaseShare(ctx context.Context, baseURL, token string) error
-	AccessPrivate(ctx context.Context, baseURL string, req AccessPrivateRequest) (*AccessPrivateResponse, error)
-	ReleaseAccess(ctx context.Context, baseURL, token string) error
+	Status(ctx context.Context, addr string) (*AgentStatus, error)
+	SharePublic(ctx context.Context, addr string, req SharePublicRequest) (*SharePublicResponse, error)
+	SharePrivate(ctx context.Context, addr string, req SharePrivateRequest) (*SharePrivateResponse, error)
+	ReleaseShare(ctx context.Context, addr, token string) error
+	AccessPrivate(ctx context.Context, addr string, req AccessPrivateRequest) (*AccessPrivateResponse, error)
+	ReleaseAccess(ctx context.Context, addr, token string) error
 }
 
 // Clients bundles REST + agent clients.
@@ -134,7 +131,7 @@ func NewDefaultClients(httpClient *http.Client) *Clients {
 	}
 	return &Clients{
 		REST:  &HTTPRESTClient{HTTP: httpClient},
-		Agent: &HTTPAgentClient{HTTP: httpClient},
+		Agent: &GRPCAgentClient{},
 	}
 }
 
@@ -162,6 +159,9 @@ func (c *HTTPRESTClient) clientFor(apiEndpoint string) (*zrokrest.Zrok, error) {
 		schemes = []string{"https"}
 	}
 	transport := httptransport.NewWithClient(host, basePath, schemes, c.HTTP)
+	// zrok API consumes/produces application/zrok.v1+json (not application/json).
+	transport.Producers["application/zrok.v1+json"] = runtime.JSONProducer()
+	transport.Consumers["application/zrok.v1+json"] = runtime.JSONConsumer()
 	return zrokrest.New(transport, strfmt.Default), nil
 }
 
@@ -237,130 +237,6 @@ func (c *HTTPRESTClient) DeleteShareName(ctx context.Context, apiEndpoint, accou
 		return fmt.Errorf("delete share name: %w", err)
 	}
 	return nil
-}
-
-// HTTPAgentClient implements AgentClient over the agent HTTP console.
-type HTTPAgentClient struct {
-	HTTP *http.Client
-}
-
-func (c *HTTPAgentClient) Status(ctx context.Context, baseURL string) (*AgentStatus, error) {
-	var out AgentStatus
-	if err := c.doJSON(ctx, http.MethodGet, join(baseURL, "/v1/agent/status"), nil, &out); err != nil {
-		return nil, err
-	}
-	return &out, nil
-}
-
-func (c *HTTPAgentClient) SharePublic(ctx context.Context, baseURL string, req SharePublicRequest) (*SharePublicResponse, error) {
-	body := map[string]any{
-		"target":      req.Target,
-		"backendMode": req.BackendMode,
-		"insecure":    req.Insecure,
-		"closed":      req.Closed,
-	}
-	if len(req.BasicAuth) > 0 {
-		body["basicAuth"] = req.BasicAuth
-	}
-	if len(req.AccessGrants) > 0 {
-		body["accessGrants"] = req.AccessGrants
-	}
-	if req.OauthProvider != "" {
-		body["oauthProvider"] = req.OauthProvider
-		body["oauthEmailDomains"] = req.OauthEmailDomains
-		body["oauthRefreshInterval"] = req.OauthRefreshInterval
-	}
-	if len(req.NameSelections) > 0 {
-		sels := make([]map[string]string, 0, len(req.NameSelections))
-		for _, ns := range req.NameSelections {
-			sels = append(sels, map[string]string{
-				"namespaceToken": ns.NamespaceToken,
-				"name":           ns.Name,
-			})
-		}
-		body["nameSelections"] = sels
-	}
-	var out SharePublicResponse
-	if err := c.doJSON(ctx, http.MethodPost, join(baseURL, "/v1/agent/sharePublic"), body, &out); err != nil {
-		return nil, err
-	}
-	return &out, nil
-}
-
-func (c *HTTPAgentClient) SharePrivate(ctx context.Context, baseURL string, req SharePrivateRequest) (*SharePrivateResponse, error) {
-	body := map[string]any{
-		"target":            req.Target,
-		"backendMode":       req.BackendMode,
-		"privateShareToken": req.PrivateShareToken,
-		"closed":            req.Closed,
-		"accessGrants":      req.AccessGrants,
-	}
-	var out SharePrivateResponse
-	if err := c.doJSON(ctx, http.MethodPost, join(baseURL, "/v1/agent/sharePrivate"), body, &out); err != nil {
-		return nil, err
-	}
-	return &out, nil
-}
-
-func (c *HTTPAgentClient) ReleaseShare(ctx context.Context, baseURL, token string) error {
-	return c.doJSON(ctx, http.MethodPost, join(baseURL, "/v1/agent/releaseShare"), map[string]string{jsonKeyToken: token}, nil)
-}
-
-func (c *HTTPAgentClient) AccessPrivate(ctx context.Context, baseURL string, req AccessPrivateRequest) (*AccessPrivateResponse, error) {
-	body := map[string]any{
-		jsonKeyToken:  req.Token,
-		"bindAddress": req.BindAddress,
-	}
-	var out AccessPrivateResponse
-	if err := c.doJSON(ctx, http.MethodPost, join(baseURL, "/v1/agent/accessPrivate"), body, &out); err != nil {
-		return nil, err
-	}
-	return &out, nil
-}
-
-func (c *HTTPAgentClient) ReleaseAccess(ctx context.Context, baseURL, token string) error {
-	return c.doJSON(ctx, http.MethodPost, join(baseURL, "/v1/agent/releaseAccess"), map[string]string{jsonKeyToken: token}, nil)
-}
-
-func (c *HTTPAgentClient) doJSON(ctx context.Context, method, urlStr string, body any, out any) error {
-	var rdr io.Reader
-	if body != nil {
-		b, err := json.Marshal(body)
-		if err != nil {
-			return err
-		}
-		rdr = bytes.NewReader(b)
-	}
-	req, err := http.NewRequestWithContext(ctx, method, urlStr, rdr)
-	if err != nil {
-		return err
-	}
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	resp, err := c.HTTP.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("agent %s %s: status %d: %s", method, urlStr, resp.StatusCode, string(data))
-	}
-	if out == nil || len(data) == 0 {
-		return nil
-	}
-	if err := json.Unmarshal(data, out); err != nil {
-		return fmt.Errorf("decode agent response: %w", err)
-	}
-	return nil
-}
-
-func join(base, path string) string {
-	return strings.TrimRight(base, "/") + path
 }
 
 // PersistEnabledEnvironment writes enable results into a local root dir (for tests / optional manager-side enable).
