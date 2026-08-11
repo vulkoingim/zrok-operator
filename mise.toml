@@ -36,8 +36,8 @@ description = "Generate CRDs + RBAC"
 run = "controller-gen rbac:roleName=manager-role crd webhook paths=./... output:crd:artifacts:config=config/crd/bases"
 
 [tasks.gen]
-description = "generate + manifests + sync Helm CRDs"
-depends = ["generate", "manifests"]
+description = "generate + manifests + mocks + sync Helm CRDs"
+depends = ["generate", "manifests", "gen:mocks"]
 run = "cp config/crd/bases/*.yaml charts/zrok-operator/crds/"
 
 [tasks.build]

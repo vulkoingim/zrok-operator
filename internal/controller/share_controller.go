@@ -19,11 +19,14 @@ package controller
 import (
 	"context"
 	"fmt"
+	"regexp"
+	"strings"
 	"time"
 
+	"github.com/openziti/zrok/v2/agent/agentGrpc"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -42,11 +45,13 @@ import (
 	"github.com/vulkoingim/zrok-operator/internal/zrokclient"
 )
 
+var attachedShareTokenRE = regexp.MustCompile(`share '([^']+)'`)
+
 // ZrokShareReconciler reconciles a ZrokShare object.
 type ZrokShareReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
-	Recorder record.EventRecorder
+	Recorder events.EventRecorder
 	Zrok     *zrokclient.Clients
 }
 
@@ -57,6 +62,7 @@ type ZrokShareReconciler struct {
 // +kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch
 // +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch
 // +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
+// +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch;update
 
 func (r *ZrokShareReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
@@ -81,6 +87,15 @@ func (r *ZrokShareReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	mode := share.Spec.ShareMode
 	if mode == "" {
 		mode = zrokv1alpha1.ShareModePublic
+	}
+
+	if mode == zrokv1alpha1.ShareModePrivate && share.Spec.NameSelection != nil {
+		r.setNotReady(ctx, share, "InvalidSpec", "nameSelection is only valid with shareMode=public")
+		return ctrl.Result{}, nil
+	}
+	if mode == zrokv1alpha1.ShareModePublic && share.Spec.PrivateShareToken != "" {
+		r.setNotReady(ctx, share, "InvalidSpec", "privateShareToken is only valid with shareMode=private")
+		return ctrl.Result{}, nil
 	}
 
 	env, err := r.getEnvironment(ctx, share)
@@ -126,7 +141,7 @@ func (r *ZrokShareReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, err
 	}
 
-	// Ensure reserved name when requested.
+	// Ensure reserved name when requested (create + promote reserved=true).
 	if share.Spec.NameSelection != nil && share.Spec.NameSelection.Name != "" {
 		ns := share.Spec.NameSelection.Namespace
 		if ns == "" {
@@ -138,6 +153,13 @@ func (r *ZrokShareReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			opmetrics.ShareReconcileErrors.Inc()
 			return ctrl.Result{}, err
 		}
+		// Promote ephemeral→reserved if the name already existed (CreateShareName 409 path).
+		if err := r.Zrok.REST.UpdateShareName(ctx, apiEndpoint, token, ns, share.Spec.NameSelection.Name, true); err != nil {
+			status.SetCondition(&share.Status.Conditions, zrokv1alpha1.ConditionNameReady, metav1.ConditionFalse, "ReserveError", err.Error(), share.Generation)
+			r.setNotReady(ctx, share, "ReserveError", err.Error())
+			opmetrics.ShareReconcileErrors.Inc()
+			return ctrl.Result{}, err
+		}
 		status.SetCondition(&share.Status.Conditions, zrokv1alpha1.ConditionNameReady, metav1.ConditionTrue, "Ready", "name reserved", share.Generation)
 	}
 
@@ -145,9 +167,9 @@ func (r *ZrokShareReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	if share.Status.ShareToken != "" {
 		st, err := r.Zrok.Agent.Status(ctx, baseURL)
 		if err == nil {
-			for _, s := range st.Shares {
-				if s.Token == share.Status.ShareToken {
-					return r.markShareReady(ctx, share, s.Token, s.FrontendEndpoint)
+			for _, s := range st.GetShares() {
+				if s.GetToken() == share.Status.ShareToken {
+					return r.markShareReady(ctx, share, s.GetToken(), s.GetFrontendEndpoint())
 				}
 			}
 			logger.Info("share token missing from agent; recreating", "token", share.Status.ShareToken)
@@ -155,9 +177,16 @@ func (r *ZrokShareReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 	}
 
+	// Adopt live agent share by reserved name before creating another.
+	if share.Status.ShareToken == "" && share.Spec.NameSelection != nil && share.Spec.NameSelection.Name != "" {
+		if tok, eps, ok := r.findAgentShareByName(ctx, baseURL, share.Spec.NameSelection.Name); ok {
+			return r.markShareReady(ctx, share, tok, eps)
+		}
+	}
+
 	switch mode {
 	case zrokv1alpha1.ShareModePrivate:
-		resp, err := r.Zrok.Agent.SharePrivate(ctx, baseURL, zrokclient.SharePrivateRequest{
+		resp, err := r.Zrok.Agent.SharePrivate(ctx, baseURL, &agentGrpc.SharePrivateRequest{
 			Target:            share.Spec.Upstream.URL,
 			BackendMode:       backendMode,
 			PrivateShareToken: share.Spec.PrivateShareToken,
@@ -169,10 +198,10 @@ func (r *ZrokShareReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			opmetrics.ShareReconcileErrors.Inc()
 			return ctrl.Result{}, err
 		}
-		return r.markShareReady(ctx, share, resp.Token, nil)
+		return r.markShareReady(ctx, share, resp.GetToken(), nil)
 
 	default: // public
-		req := zrokclient.SharePublicRequest{
+		req := &agentGrpc.SharePublicRequest{
 			Target:       share.Spec.Upstream.URL,
 			BackendMode:  backendMode,
 			BasicAuth:    basicAuth,
@@ -185,7 +214,7 @@ func (r *ZrokShareReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			if ns == "" {
 				ns = zrokv1alpha1.DefaultNamespaceToken
 			}
-			req.NameSelections = []zrokclient.NameSelection{{
+			req.NameSelections = []*agentGrpc.NameSelection{{
 				NamespaceToken: ns,
 				Name:           share.Spec.NameSelection.Name,
 			}}
@@ -197,12 +226,29 @@ func (r *ZrokShareReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 		resp, err := r.Zrok.Agent.SharePublic(ctx, baseURL, req)
 		if err != nil {
+			if isShareConflict(err) && share.Spec.NameSelection != nil && share.Spec.NameSelection.Name != "" {
+				name := share.Spec.NameSelection.Name
+				if tok, eps, ok := r.findAgentShareByName(ctx, baseURL, name); ok {
+					return r.markShareReady(ctx, share, tok, eps)
+				}
+				// Remote orphan (share exists in controller, not in this agent): tear down and recreate.
+				if env.Status.EnvZID != "" {
+					if tok, _, findErr := r.Zrok.REST.FindShareByFrontendName(ctx, apiEndpoint, token, env.Status.EnvZID, name); findErr == nil && tok != "" {
+						logger.Info("releasing orphan remote share before recreate", "token", tok, "name", name)
+						_ = r.Zrok.Agent.ReleaseShare(ctx, baseURL, tok)
+						if uerr := r.Zrok.REST.Unshare(ctx, apiEndpoint, token, env.Status.EnvZID, tok); uerr != nil {
+							logger.Error(uerr, "unshare orphan failed")
+						}
+						return ctrl.Result{RequeueAfter: 2 * time.Second}, nil
+					}
+				}
+			}
 			r.setNotReady(ctx, share, "ShareError", err.Error())
 			opmetrics.ShareReconcileErrors.Inc()
-			r.Recorder.Event(share, corev1.EventTypeWarning, "ShareError", err.Error())
+			r.Recorder.Eventf(share, nil, corev1.EventTypeWarning, "ShareError", "Error", "%s", err.Error())
 			return ctrl.Result{}, err
 		}
-		return r.markShareReady(ctx, share, resp.Token, resp.FrontendEndpoints)
+		return r.markShareReady(ctx, share, resp.GetToken(), resp.GetFrontendEndpoints())
 	}
 }
 
@@ -216,28 +262,76 @@ func (r *ZrokShareReconciler) reconcileDelete(ctx context.Context, share *zrokv1
 		return ctrl.Result{}, err
 	}
 
-	if env != nil && share.Status.ShareToken != "" {
-		baseURL := agent.AgentBaseURL(env)
-		if err := r.Zrok.Agent.ReleaseShare(ctx, baseURL, share.Status.ShareToken); err != nil {
-			log.FromContext(ctx).Error(err, "release share failed; continuing")
+	logger := log.FromContext(ctx)
+
+	var apiEndpoint, enableToken string
+	if env != nil {
+		apiEndpoint = env.Spec.ApiEndpoint
+		if apiEndpoint == "" {
+			apiEndpoint = zrokclient.DefaultAPIEndpoint
 		}
+		enableToken, err = r.readEnableToken(ctx, env)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+
+	// Resolve share token even when status was never written (failed create / crash).
+	shareToken := share.Status.ShareToken
+	if env != nil && shareToken == "" {
+		addr := agent.AgentDialAddr(env)
+		if share.Spec.NameSelection != nil && share.Spec.NameSelection.Name != "" {
+			if tok, _, ok := r.findAgentShareByName(ctx, addr, share.Spec.NameSelection.Name); ok {
+				shareToken = tok
+			}
+		}
+		if shareToken == "" && env.Status.EnvZID != "" && share.Spec.NameSelection != nil && share.Spec.NameSelection.Name != "" {
+			if tok, _, findErr := r.Zrok.REST.FindShareByFrontendName(ctx, apiEndpoint, enableToken, env.Status.EnvZID, share.Spec.NameSelection.Name); findErr == nil {
+				shareToken = tok
+			}
+		}
+	}
+
+	// Release live share first — reserved names stay attached until unshared.
+	if env != nil && shareToken != "" {
+		addr := agent.AgentDialAddr(env)
+		if err := r.Zrok.Agent.ReleaseShare(ctx, addr, shareToken); err != nil {
+			logger.Error(err, "agent release share failed; trying REST unshare")
+		}
+		if env.Status.EnvZID != "" {
+			if err := r.Zrok.REST.Unshare(ctx, apiEndpoint, enableToken, env.Status.EnvZID, shareToken); err != nil {
+				logger.Error(err, "REST unshare failed; will retry")
+				r.Recorder.Eventf(share, nil, corev1.EventTypeWarning, "ReleaseError", "Error", "%s", err.Error())
+				return ctrl.Result{RequeueAfter: 5 * time.Second}, err
+			}
+		}
+		share.Status.ShareToken = ""
+		share.Status.AssignedURL = ""
+		share.Status.FrontendEndpoints = nil
+		_ = r.Status().Update(ctx, share)
 	}
 
 	if env != nil && share.Spec.ReclaimPolicy != zrokv1alpha1.ReclaimRetain &&
 		share.Spec.NameSelection != nil && share.Spec.NameSelection.Name != "" {
-		token, err := r.readEnableToken(ctx, env)
-		if err == nil {
-			apiEndpoint := env.Spec.ApiEndpoint
-			if apiEndpoint == "" {
-				apiEndpoint = zrokclient.DefaultAPIEndpoint
+		ns := share.Spec.NameSelection.Namespace
+		if ns == "" {
+			ns = zrokv1alpha1.DefaultNamespaceToken
+		}
+		if err := r.Zrok.REST.DeleteShareName(ctx, apiEndpoint, enableToken, ns, share.Spec.NameSelection.Name); err != nil {
+			// 409 = still attached; parse token and release, then retry.
+			if isNameStillAttached(err) {
+				if tok := extractAttachedShareToken(err); tok != "" && env.Status.EnvZID != "" {
+					logger.Info("name still attached; releasing discovered share", "token", tok)
+					_ = r.Zrok.Agent.ReleaseShare(ctx, agent.AgentDialAddr(env), tok)
+					if uerr := r.Zrok.REST.Unshare(ctx, apiEndpoint, enableToken, env.Status.EnvZID, tok); uerr != nil {
+						logger.Error(uerr, "unshare attached share failed")
+					}
+				}
+				logger.Info("share name still attached; retrying", "error", err)
+				return ctrl.Result{RequeueAfter: 3 * time.Second}, nil
 			}
-			ns := share.Spec.NameSelection.Namespace
-			if ns == "" {
-				ns = zrokv1alpha1.DefaultNamespaceToken
-			}
-			if err := r.Zrok.REST.DeleteShareName(ctx, apiEndpoint, token, ns, share.Spec.NameSelection.Name); err != nil {
-				log.FromContext(ctx).Error(err, "delete share name failed; continuing")
-			}
+			logger.Error(err, "delete share name failed; will retry")
+			return ctrl.Result{RequeueAfter: 5 * time.Second}, err
 		}
 	}
 
@@ -246,6 +340,51 @@ func (r *ZrokShareReconciler) reconcileDelete(ctx context.Context, share *zrokv1
 		return ctrl.Result{}, err
 	}
 	return ctrl.Result{}, nil
+}
+
+func (r *ZrokShareReconciler) findAgentShareByName(ctx context.Context, addr, name string) (token string, endpoints []string, ok bool) {
+	st, err := r.Zrok.Agent.Status(ctx, addr)
+	if err != nil || st == nil {
+		return "", nil, false
+	}
+	for _, s := range st.GetShares() {
+		eps := s.GetFrontendEndpoint()
+		for _, ep := range eps {
+			if zrokclient.FrontendEndpointMatchesName(ep, name) {
+				return s.GetToken(), eps, true
+			}
+		}
+	}
+	return "", nil, false
+}
+
+func isShareConflict(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "409") ||
+		strings.Contains(msg, "shareconflict") ||
+		strings.Contains(msg, "already in use")
+}
+
+func isNameStillAttached(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "409") || strings.Contains(msg, "still attached")
+}
+
+func extractAttachedShareToken(err error) string {
+	if err == nil {
+		return ""
+	}
+	m := attachedShareTokenRE.FindStringSubmatch(err.Error())
+	if len(m) == 2 {
+		return m[1]
+	}
+	return ""
 }
 
 func (r *ZrokShareReconciler) markShareReady(ctx context.Context, share *zrokv1alpha1.ZrokShare, token string, endpoints []string) (ctrl.Result, error) {
@@ -257,7 +396,26 @@ func (r *ZrokShareReconciler) markShareReady(ctx context.Context, share *zrokv1a
 	} else if token != "" && share.Spec.ShareMode == zrokv1alpha1.ShareModePrivate {
 		share.Status.AssignedURL = token
 	}
-	if share.Spec.NameSelection == nil {
+
+	mode := share.Spec.ShareMode
+	if mode == "" {
+		mode = zrokv1alpha1.ShareModePublic
+	}
+	switch {
+	case mode == zrokv1alpha1.ShareModePrivate:
+		share.Status.Reservation = zrokv1alpha1.ReservationPrivate
+		status.SetCondition(
+			&share.Status.Conditions,
+			zrokv1alpha1.ConditionNameReady,
+			metav1.ConditionTrue,
+			"Private",
+			"private share; use ZrokAccess or zrok2 access private",
+			share.Generation,
+		)
+	case share.Spec.NameSelection != nil && share.Spec.NameSelection.Name != "":
+		share.Status.Reservation = zrokv1alpha1.ReservationReserved
+	default:
+		share.Status.Reservation = zrokv1alpha1.ReservationEphemeral
 		status.SetCondition(
 			&share.Status.Conditions,
 			zrokv1alpha1.ConditionNameReady,
@@ -272,7 +430,7 @@ func (r *ZrokShareReconciler) markShareReady(ctx context.Context, share *zrokv1a
 	if err := r.Status().Update(ctx, share); err != nil {
 		return ctrl.Result{}, err
 	}
-	r.Recorder.Eventf(share, corev1.EventTypeNormal, "Ready", "share ready: %s", share.Status.AssignedURL)
+	r.Recorder.Eventf(share, nil, corev1.EventTypeNormal, "Ready", "Ready", "share ready: %s", share.Status.AssignedURL)
 	return ctrl.Result{RequeueAfter: 2 * time.Minute}, nil
 }
 

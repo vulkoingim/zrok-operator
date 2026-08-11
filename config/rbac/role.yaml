@@ -15,6 +15,7 @@ rules:
   - ""
   resources:
   - persistentvolumeclaims
+  - secrets
   - services
   verbs:
   - create
@@ -28,7 +29,6 @@ rules:
   - ""
   resources:
   - pods
-  - secrets
   verbs:
   - get
   - list
@@ -45,6 +45,14 @@ rules:
   - patch
   - update
   - watch
+- apiGroups:
+  - events.k8s.io
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+  - update
 - apiGroups:
   - networking.k8s.io
   resources:

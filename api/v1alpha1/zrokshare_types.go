@@ -27,8 +27,9 @@ type ZrokShareSpec struct {
 	// +kubebuilder:validation:Required
 	EnvironmentRef corev1.LocalObjectReference `json:"environmentRef"`
 
-	// ShareMode is public or private. MVP implements public; private is accepted in schema
-	// and rejected with a clear condition until fully implemented.
+	// ShareMode selects public or private sharing.
+	//   public  — reachable via frontend URL (ephemeral or reserved name)
+	//   private — reachable only via zrok access (optional vanity PrivateShareToken)
 	// +kubebuilder:default=public
 	// +kubebuilder:validation:Enum=public;private
 	// +optional
@@ -44,12 +45,14 @@ type ZrokShareSpec struct {
 	// +kubebuilder:validation:Required
 	Upstream UpstreamSpec `json:"upstream"`
 
-	// NameSelection optionally binds a reserved namespace name for a sticky frontend URL.
-	// Strongly recommended so the agent restarts the share after pod restarts.
+	// NameSelection reserves a sticky public frontend name (zrok v2 reserved name).
+	// Omit for ephemeral public shares (random URL, gone when share ends).
+	// Only valid with shareMode=public.
 	// +optional
 	NameSelection *NameSelectionSpec `json:"nameSelection,omitempty"`
 
-	// PrivateShareToken sets a vanity token for private shares.
+	// PrivateShareToken sets a vanity token for private shares (sticky private identifier).
+	// Only valid with shareMode=private. Omit for a random private token.
 	// +optional
 	PrivateShareToken string `json:"privateShareToken,omitempty"`
 
@@ -89,16 +92,20 @@ type UpstreamSpec struct {
 	URL string `json:"url"`
 }
 
-// NameSelectionSpec selects a reserved name in a namespace (v2 model).
+// NameSelectionSpec selects a reserved name in a namespace (zrok v2).
+// Creates the name via CreateShareName and promotes it with reserved=true.
 type NameSelectionSpec struct {
 	// Namespace is the namespace token (typically "public").
 	// +kubebuilder:default=public
 	// +optional
 	Namespace string `json:"namespace,omitempty"`
 
-	// Name is the reserved frontend name within the namespace.
+	// Name is the reserved frontend name within the namespace (DNS label).
+	// Frontend URL becomes https://<name>.shares.zrok.io (for public namespace).
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`
 	Name string `json:"name"`
 }
 
@@ -135,6 +142,12 @@ type ZrokShareStatus struct {
 	// +optional
 	ShareToken string `json:"shareToken,omitempty"`
 
+	// Reservation describes the frontend identity lifecycle:
+	// ephemeral (random public name), reserved (sticky NameSelection), or private.
+	// +optional
+	// +kubebuilder:validation:Enum=ephemeral;reserved;private
+	Reservation string `json:"reservation,omitempty"`
+
 	// Conditions represent the latest available observations.
 	// +listType=map
 	// +listMapKey=type
@@ -146,6 +159,8 @@ type ZrokShareStatus struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:shortName=zrokshare
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
+// +kubebuilder:printcolumn:name="Mode",type=string,JSONPath=`.spec.shareMode`
+// +kubebuilder:printcolumn:name="Reservation",type=string,JSONPath=`.status.reservation`
 // +kubebuilder:printcolumn:name="URL",type=string,JSONPath=`.status.assignedURL`
 // +kubebuilder:printcolumn:name="Token",type=string,JSONPath=`.status.shareToken`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`

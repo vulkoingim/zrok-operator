@@ -18,6 +18,7 @@ package agent
 
 import (
 	"fmt"
+	"strings"
 
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -34,7 +35,7 @@ const (
 	DefaultImage = "docker.io/openziti/zrok2:2.0.4"
 
 	// DefaultSocatImage proxies TCP→unix for native agent gRPC.
-	DefaultSocatImage = "docker.io/alpine/socat:1.8.0.3"
+	DefaultSocatImage = "docker.io/alpine/socat:1.8.1.3"
 
 	// ZrokUID is the non-root user in the openziti/zrok2 image.
 	ZrokUID int64 = 2171
@@ -42,15 +43,29 @@ const (
 	// AppName is the agent app label / container name.
 	AppName = "zrok-agent"
 
+	// seedVolumeName mounts the identity Secret into the seed init container.
+	seedVolumeName = "zrok-seed"
+
 	// DefaultGRPCPort is the TCP port that proxies to agent.socket.
 	DefaultGRPCPort int32 = 7777
 
-	homeMountPath = "/mnt"
-	agentSocket   = homeMountPath + "/.zrok2/agent.socket"
-	pvcNameSuffix = "-zrok-home"
-	deploySuffix  = "-agent"
-	svcSuffix     = "-agent"
+	homeMountPath  = "/mnt"
+	agentSocket    = homeMountPath + "/.zrok2/agent.socket"
+	pvcNameSuffix  = "-zrok-home"
+	deploySuffix   = "-agent"
+	svcSuffix      = "-agent"
+	idSecretSuffix = "-zrok-identity"
 )
+
+// IdentitySecretName returns the Secret that seeds agent ~/.zrok2.
+func IdentitySecretName(env *zrokv1alpha1.ZrokEnvironment) string {
+	return env.Name + idSecretSuffix
+}
+
+// EnvironmentDescription is the remote zrok environment description (for UI / matching).
+func EnvironmentDescription(env *zrokv1alpha1.ZrokEnvironment) string {
+	return fmt.Sprintf("zrok-operator/%s/%s", env.Namespace, env.Name)
+}
 
 // Labels returns standard labels for agent resources owned by env.
 func Labels(env *zrokv1alpha1.ZrokEnvironment) map[string]string {
@@ -164,15 +179,14 @@ func DesiredService(env *zrokv1alpha1.ZrokEnvironment) *corev1.Service {
 	}
 }
 
-// DesiredDeployment builds the agent Deployment (init: chown + enable, main: agent start).
-func DesiredDeployment(env *zrokv1alpha1.ZrokEnvironment, enableToken string) *appsv1.Deployment {
+// DesiredDeployment builds the agent Deployment (init: seed identity, main: agent + grpc proxy).
+func DesiredDeployment(env *zrokv1alpha1.ZrokEnvironment) *appsv1.Deployment {
 	replicas := int32(1)
 	if env.Spec.Agent.Replicas != nil {
 		replicas = *env.Spec.Agent.Replicas
 	}
 	port := ConsolePort(env)
 	image := Image(env)
-	apiEndpoint := env.Spec.ApiEndpoint
 	labels := Labels(env)
 
 	resources := env.Spec.Agent.Resources
@@ -215,19 +229,13 @@ func DesiredDeployment(env *zrokv1alpha1.ZrokEnvironment, enableToken string) *a
 		},
 	}
 
-	enableEnv := []corev1.EnvVar{
-		{Name: "HOME", Value: homeMountPath},
-		{Name: "ZROK2_ENABLE_TOKEN", Value: enableToken},
-	}
-	if apiEndpoint != "" {
-		enableEnv = append(enableEnv, corev1.EnvVar{Name: "ZROK2_API_ENDPOINT", Value: apiEndpoint})
-	}
-
 	volMount := corev1.VolumeMount{Name: "zrok-home", MountPath: homeMountPath}
+	seedMount := corev1.VolumeMount{Name: seedVolumeName, MountPath: "/seed", ReadOnly: true}
 	portStr := fmt.Sprintf("%d", port)
 	grpcPort := GRPCPort(env)
 	// PVC ownership comes from PodSecurityContext.FSGroup (2171). Do not run a root
 	// chown init — pod runAsNonRoot=true rejects UID 0 (CreateContainerConfigError).
+	// Enable is done by the manager (stores EnvZID); init only seeds ~/.zrok2 from Secret.
 
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
@@ -245,13 +253,30 @@ func DesiredDeployment(env *zrokv1alpha1.ZrokEnvironment, enableToken string) *a
 					SecurityContext: podSec,
 					InitContainers: []corev1.Container{
 						{
-							Name:            "zrok-enable",
+							Name:            seedVolumeName,
 							Image:           image,
 							ImagePullPolicy: corev1.PullIfNotPresent,
-							Command:         []string{"zrok2-enable"},
-							Env:             enableEnv,
+							Command: []string{"bash", "-c", strings.Join([]string{
+								`set -euo pipefail`,
+								`mkdir -p /mnt/.zrok2/identities`,
+								`# Seed once for environment.json; always repair missing identity file.`,
+								`if [[ ! -s /mnt/.zrok2/environment.json ]]; then`,
+								`  cp /seed/metadata.json /mnt/.zrok2/metadata.json`,
+								`  cp /seed/config.json /mnt/.zrok2/config.json`,
+								`  cp /seed/environment.json /mnt/.zrok2/environment.json`,
+								`  chmod 600 /mnt/.zrok2/environment.json`,
+								`  echo "INFO: seeded environment.json from Secret"`,
+								`fi`,
+								`# zrok expects identities/environment.json (EnvironmentIdentityName + .json)`,
+								`if [[ ! -s /mnt/.zrok2/identities/environment.json ]]; then`,
+								`  cp /seed/identity /mnt/.zrok2/identities/environment.json`,
+								`  chmod 600 /mnt/.zrok2/identities/environment.json`,
+								`  rm -f /mnt/.zrok2/identities/environment`,
+								`  echo "INFO: seeded identities/environment.json from Secret"`,
+								`fi`,
+							}, "\n")},
 							SecurityContext: secCtx,
-							VolumeMounts:    []corev1.VolumeMount{volMount},
+							VolumeMounts:    []corev1.VolumeMount{volMount, seedMount},
 						},
 					},
 					Containers: []corev1.Container{
@@ -260,7 +285,8 @@ func DesiredDeployment(env *zrokv1alpha1.ZrokEnvironment, enableToken string) *a
 							Image:           image,
 							ImagePullPolicy: corev1.PullIfNotPresent,
 							Command: []string{
-								"bash", "-c",
+								"bash",
+								"-c",
 								`rm -f /mnt/.zrok2/agent.socket && exec zrok2 agent start --console-address 0.0.0.0 --console-start-port "$PORT" --console-end-port "$PORT"`,
 							},
 							Env: []corev1.EnvVar{
@@ -327,14 +353,24 @@ func DesiredDeployment(env *zrokv1alpha1.ZrokEnvironment, enableToken string) *a
 							},
 						},
 					},
-					Volumes: []corev1.Volume{{
-						Name: "zrok-home",
-						VolumeSource: corev1.VolumeSource{
-							PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-								ClaimName: PVCName(env),
+					Volumes: []corev1.Volume{
+						{
+							Name: "zrok-home",
+							VolumeSource: corev1.VolumeSource{
+								PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+									ClaimName: PVCName(env),
+								},
 							},
 						},
-					}},
+						{
+							Name: seedVolumeName,
+							VolumeSource: corev1.VolumeSource{
+								Secret: &corev1.SecretVolumeSource{
+									SecretName: IdentitySecretName(env),
+								},
+							},
+						},
+					},
 				},
 			},
 		},

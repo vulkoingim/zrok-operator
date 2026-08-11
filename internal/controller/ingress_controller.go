@@ -22,7 +22,7 @@ import (
 	"strings"
 
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -49,12 +49,14 @@ const (
 type IngressReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
-	Recorder record.EventRecorder
+	Recorder events.EventRecorder
 }
 
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=zrok.k8s.zrok.io,resources=zrokshares,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
+// +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch;update
 
 func (r *IngressReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
@@ -79,20 +81,20 @@ func (r *IngressReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	if len(ing.Spec.Rules) == 0 || len(ing.Spec.Rules[0].HTTP.Paths) == 0 {
-		r.Recorder.Event(ing, corev1.EventTypeWarning, "InvalidIngress", "no HTTP paths defined")
+		r.Recorder.Eventf(ing, nil, corev1.EventTypeWarning, "InvalidIngress", "Error", "no HTTP paths defined")
 		return ctrl.Result{}, nil
 	}
 
 	path := ing.Spec.Rules[0].HTTP.Paths[0]
 	if path.Backend.Service == nil {
-		r.Recorder.Event(ing, corev1.EventTypeWarning, "InvalidIngress", "backend service required")
+		r.Recorder.Eventf(ing, nil, corev1.EventTypeWarning, "InvalidIngress", "Error", "backend service required")
 		return ctrl.Result{}, nil
 	}
 
 	svc := path.Backend.Service
 	port := svc.Port.Number
 	if port == 0 {
-		r.Recorder.Event(ing, corev1.EventTypeWarning, "InvalidIngress", "numeric service port required")
+		r.Recorder.Eventf(ing, nil, corev1.EventTypeWarning, "InvalidIngress", "Error", "numeric service port required")
 		return ctrl.Result{}, nil
 	}
 

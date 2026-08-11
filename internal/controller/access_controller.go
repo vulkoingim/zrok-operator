@@ -20,9 +20,10 @@ import (
 	"context"
 	"time"
 
+	"github.com/openziti/zrok/v2/agent/agentGrpc"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -42,7 +43,7 @@ import (
 type ZrokAccessReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
-	Recorder record.EventRecorder
+	Recorder events.EventRecorder
 	Zrok     *zrokclient.Clients
 }
 
@@ -51,6 +52,7 @@ type ZrokAccessReconciler struct {
 // +kubebuilder:rbac:groups=zrok.k8s.zrok.io,resources=zrokaccesses/finalizers,verbs=update
 // +kubebuilder:rbac:groups=zrok.k8s.zrok.io,resources=zrokenvironments,verbs=get;list;watch
 // +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
+// +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch;update
 
 func (r *ZrokAccessReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	access := &zrokv1alpha1.ZrokAccess{}
@@ -97,25 +99,25 @@ func (r *ZrokAccessReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	if bind == "" {
 		bind = "0.0.0.0:0"
 	}
-	resp, err := r.Zrok.Agent.AccessPrivate(ctx, agent.AgentBaseURL(env), zrokclient.AccessPrivateRequest{
+	resp, err := r.Zrok.Agent.AccessPrivate(ctx, agent.AgentBaseURL(env), &agentGrpc.AccessPrivateRequest{
 		Token:       access.Spec.ShareToken,
 		BindAddress: bind,
 	})
 	if err != nil {
 		status.SetCondition(&access.Status.Conditions, zrokv1alpha1.ConditionReady, metav1.ConditionFalse, "AccessError", err.Error(), access.Generation)
 		_ = r.Status().Update(ctx, access)
-		r.Recorder.Event(access, corev1.EventTypeWarning, "AccessError", err.Error())
+		r.Recorder.Eventf(access, nil, corev1.EventTypeWarning, "AccessError", "Error", "%s", err.Error())
 		return ctrl.Result{}, err
 	}
 
-	access.Status.AccessToken = resp.FrontendToken
-	access.Status.FrontendEndpoint = resp.FrontendToken
+	access.Status.AccessToken = resp.GetFrontendToken()
+	access.Status.FrontendEndpoint = resp.GetFrontendToken()
 	access.Status.ObservedGeneration = access.Generation
 	status.SetCondition(&access.Status.Conditions, zrokv1alpha1.ConditionReady, metav1.ConditionTrue, "Ready", "access active", access.Generation)
 	if err := r.Status().Update(ctx, access); err != nil {
 		return ctrl.Result{}, err
 	}
-	r.Recorder.Event(access, corev1.EventTypeNormal, "Ready", "private access ready")
+	r.Recorder.Eventf(access, nil, corev1.EventTypeNormal, "Ready", "Ready", "private access ready")
 	return ctrl.Result{RequeueAfter: 2 * time.Minute}, nil
 }
 

@@ -21,10 +21,11 @@ spec:
   agent:
     consolePort: 8888
 ---
+# --- public + reserved (sticky URL; survives agent restart) ---
 apiVersion: zrok.k8s.zrok.io/v1alpha1
 kind: ZrokShare
 metadata:
-  name: nginx
+  name: nginx-reserved
   namespace: default
 spec:
   environmentRef:
@@ -35,5 +36,32 @@ spec:
     url: http://nginx.default.svc:80
   nameSelection:
     namespace: public
-    name: nginx-demo
+    name: nginx-demo # DNS label ≤63; must be unique on your account
   reclaimPolicy: Delete
+---
+# --- public + ephemeral (random URL; gone when share ends) ---
+# apiVersion: zrok.k8s.zrok.io/v1alpha1
+# kind: ZrokShare
+# metadata:
+#   name: nginx-ephemeral
+#   namespace: default
+# spec:
+#   environmentRef: { name: default }
+#   shareMode: public
+#   backendMode: proxy
+#   upstream: { url: http://nginx.default.svc:80 }
+#   reclaimPolicy: Delete
+---
+# --- private (optional vanity token; consume via ZrokAccess) ---
+# apiVersion: zrok.k8s.zrok.io/v1alpha1
+# kind: ZrokShare
+# metadata:
+#   name: nginx-private
+#   namespace: default
+# spec:
+#   environmentRef: { name: default }
+#   shareMode: private
+#   backendMode: proxy
+#   upstream: { url: http://nginx.default.svc:80 }
+#   privateShareToken: nginx-priv # optional sticky private token
+#   reclaimPolicy: Delete

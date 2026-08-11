@@ -56,6 +56,13 @@ const (
 	ShareModePrivate ShareMode = "private"
 )
 
+// Reservation kinds reported on ZrokShare status.
+const (
+	ReservationEphemeral = "ephemeral"
+	ReservationReserved  = "reserved"
+	ReservationPrivate   = "private"
+)
+
 // BackendMode is the zrok backend mode.
 // +kubebuilder:validation:Enum=proxy;web;caddy;drive;tcpTunnel;udpTunnel;socks
 type BackendMode string

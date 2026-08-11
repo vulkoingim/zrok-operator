@@ -152,7 +152,7 @@ func main() {
 	if err = (&controller.ZrokEnvironmentReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("zrokenvironment-controller"),
+		Recorder: mgr.GetEventRecorder("zrokenvironment-controller"),
 		Zrok:     zrokClients,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ZrokEnvironment")
@@ -162,7 +162,7 @@ func main() {
 	if err = (&controller.ZrokShareReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("zrokshare-controller"),
+		Recorder: mgr.GetEventRecorder("zrokshare-controller"),
 		Zrok:     zrokClients,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ZrokShare")
@@ -172,7 +172,7 @@ func main() {
 	if err = (&controller.ZrokAccessReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("zrokaccess-controller"),
+		Recorder: mgr.GetEventRecorder("zrokaccess-controller"),
 		Zrok:     zrokClients,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ZrokAccess")
@@ -182,7 +182,7 @@ func main() {
 	if err = (&controller.IngressReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("zrok-ingress-controller"),
+		Recorder: mgr.GetEventRecorder("zrok-ingress-controller"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Ingress")
 		os.Exit(1)

@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+#MISE description="Generate mocks via mockery"
+set -euo pipefail
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT"
+echo "Generating mocks..."
+mockery

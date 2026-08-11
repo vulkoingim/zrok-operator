@@ -26,6 +26,7 @@ import (
 
 	"github.com/go-openapi/runtime"
 	"github.com/go-openapi/strfmt"
+	"github.com/openziti/zrok/v2/agent/agentGrpc"
 	"github.com/openziti/zrok/v2/environment"
 	"github.com/openziti/zrok/v2/environment/env_core"
 	"github.com/openziti/zrok/v2/rest_client_zrok/share"
@@ -33,88 +34,30 @@ import (
 	httptransport "github.com/go-openapi/runtime/client"
 	zrokrest "github.com/openziti/zrok/v2/rest_client_zrok"
 	restenv "github.com/openziti/zrok/v2/rest_client_zrok/environment"
+	restmeta "github.com/openziti/zrok/v2/rest_client_zrok/metadata"
 )
 
 const DefaultAPIEndpoint = "https://api-v2.zrok.io"
-
-// NameSelection is a reserved name binding.
-type NameSelection struct {
-	NamespaceToken string
-	Name           string
-}
-
-// SharePublicRequest is the agent sharePublic payload.
-type SharePublicRequest struct {
-	Target               string
-	BackendMode          string
-	NameSelections       []NameSelection
-	BasicAuth            []string
-	Insecure             bool
-	Closed               bool
-	AccessGrants         []string
-	OauthProvider        string
-	OauthEmailDomains    []string
-	OauthRefreshInterval string
-}
-
-// SharePublicResponse is returned by agent sharePublic.
-type SharePublicResponse struct {
-	Token             string
-	FrontendEndpoints []string
-}
-
-// SharePrivateRequest is the agent sharePrivate payload.
-type SharePrivateRequest struct {
-	Target            string
-	BackendMode       string
-	PrivateShareToken string
-	Closed            bool
-	AccessGrants      []string
-}
-
-// SharePrivateResponse is returned by agent sharePrivate.
-type SharePrivateResponse struct {
-	Token string
-}
-
-// AccessPrivateRequest is the agent accessPrivate payload.
-type AccessPrivateRequest struct {
-	Token       string
-	BindAddress string
-}
-
-// AccessPrivateResponse is returned by agent accessPrivate.
-type AccessPrivateResponse struct {
-	FrontendToken string `json:"frontendToken"`
-}
-
-// AgentStatus is a subset of agent status.
-type AgentStatus struct {
-	Shares []AgentShareStatus `json:"shares"`
-}
-
-// AgentShareStatus describes one running share.
-type AgentShareStatus struct {
-	Token            string   `json:"token"`
-	FrontendEndpoint []string `json:"frontendEndpoint"`
-}
 
 // RESTClient talks to the zrok controller API.
 type RESTClient interface {
 	Enable(ctx context.Context, apiEndpoint, accountToken, host, description string) (envZID string, zitiCfg string, err error)
 	Disable(ctx context.Context, apiEndpoint, accountToken, envZID string) error
 	CreateShareName(ctx context.Context, apiEndpoint, accountToken, namespaceToken, name string) error
+	UpdateShareName(ctx context.Context, apiEndpoint, accountToken, namespaceToken, name string, reserved bool) error
 	DeleteShareName(ctx context.Context, apiEndpoint, accountToken, namespaceToken, name string) error
+	Unshare(ctx context.Context, apiEndpoint, accountToken, envZID, shareToken string) error
+	FindShareByFrontendName(ctx context.Context, apiEndpoint, accountToken, envZID, name string) (shareToken string, endpoints []string, err error)
 }
 
 // AgentClient talks to a zrok2 agent over native gRPC (agentGrpc).
 // addr is host:port of the TCP→unix proxy (see agent.AgentDialAddr).
 type AgentClient interface {
-	Status(ctx context.Context, addr string) (*AgentStatus, error)
-	SharePublic(ctx context.Context, addr string, req SharePublicRequest) (*SharePublicResponse, error)
-	SharePrivate(ctx context.Context, addr string, req SharePrivateRequest) (*SharePrivateResponse, error)
+	Status(ctx context.Context, addr string) (*agentGrpc.StatusResponse, error)
+	SharePublic(ctx context.Context, addr string, req *agentGrpc.SharePublicRequest) (*agentGrpc.SharePublicResponse, error)
+	SharePrivate(ctx context.Context, addr string, req *agentGrpc.SharePrivateRequest) (*agentGrpc.SharePrivateResponse, error)
 	ReleaseShare(ctx context.Context, addr, token string) error
-	AccessPrivate(ctx context.Context, addr string, req AccessPrivateRequest) (*AccessPrivateResponse, error)
+	AccessPrivate(ctx context.Context, addr string, req *agentGrpc.AccessPrivateRequest) (*agentGrpc.AccessPrivateResponse, error)
 	ReleaseAccess(ctx context.Context, addr, token string) error
 }
 
@@ -209,11 +152,30 @@ func (c *HTTPRESTClient) CreateShareName(ctx context.Context, apiEndpoint, accou
 	}
 	_, err = client.Share.CreateShareName(params, auth)
 	if err != nil {
-		// Treat already-exists as success for idempotency.
+		// Treat already-exists as success for idempotency; caller should UpdateShareName to promote reserved.
 		if strings.Contains(err.Error(), "409") || strings.Contains(strings.ToLower(err.Error()), "already") {
 			return nil
 		}
 		return fmt.Errorf("create share name: %w", err)
+	}
+	return nil
+}
+
+func (c *HTTPRESTClient) UpdateShareName(ctx context.Context, apiEndpoint, accountToken, namespaceToken, name string, reserved bool) error {
+	client, err := c.clientFor(apiEndpoint)
+	if err != nil {
+		return err
+	}
+	auth := httptransport.APIKeyAuth("X-TOKEN", "header", accountToken)
+	params := share.NewUpdateShareNameParamsWithContext(ctx)
+	params.Body = share.UpdateShareNameBody{
+		NamespaceToken: namespaceToken,
+		Name:           name,
+		Reserved:       reserved,
+	}
+	_, err = client.Share.UpdateShareName(params, auth)
+	if err != nil {
+		return fmt.Errorf("update share name: %w", err)
 	}
 	return nil
 }
@@ -237,6 +199,76 @@ func (c *HTTPRESTClient) DeleteShareName(ctx context.Context, apiEndpoint, accou
 		return fmt.Errorf("delete share name: %w", err)
 	}
 	return nil
+}
+
+func (c *HTTPRESTClient) Unshare(ctx context.Context, apiEndpoint, accountToken, envZID, shareToken string) error {
+	if shareToken == "" {
+		return nil
+	}
+	client, err := c.clientFor(apiEndpoint)
+	if err != nil {
+		return err
+	}
+	auth := httptransport.APIKeyAuth("X-TOKEN", "header", accountToken)
+	params := share.NewUnshareParamsWithContext(ctx)
+	params.Body = share.UnshareBody{
+		EnvZID:     envZID,
+		ShareToken: shareToken,
+	}
+	_, err = client.Share.Unshare(params, auth)
+	if err != nil {
+		msg := err.Error()
+		if strings.Contains(msg, "404") || strings.Contains(strings.ToLower(msg), "not found") {
+			return nil
+		}
+		return fmt.Errorf("unshare: %w", err)
+	}
+	return nil
+}
+
+func (c *HTTPRESTClient) FindShareByFrontendName(ctx context.Context, apiEndpoint, accountToken, envZID, name string) (string, []string, error) {
+	if envZID == "" || name == "" {
+		return "", nil, nil
+	}
+	client, err := c.clientFor(apiEndpoint)
+	if err != nil {
+		return "", nil, err
+	}
+	auth := httptransport.APIKeyAuth("X-TOKEN", "header", accountToken)
+	params := restmeta.NewListSharesParamsWithContext(ctx)
+	params.EnvZID = &envZID
+	resp, err := client.Metadata.ListShares(params, auth)
+	if err != nil {
+		return "", nil, fmt.Errorf("list shares: %w", err)
+	}
+	if resp.Payload == nil {
+		return "", nil, nil
+	}
+	for _, s := range resp.Payload.Shares {
+		if s == nil {
+			continue
+		}
+		for _, ep := range s.FrontendEndpoints {
+			if FrontendEndpointMatchesName(ep, name) {
+				return s.ShareToken, s.FrontendEndpoints, nil
+			}
+		}
+	}
+	return "", nil, nil
+}
+
+// FrontendEndpointMatchesName reports whether a frontend URL belongs to the reserved share name.
+func FrontendEndpointMatchesName(endpoint, name string) bool {
+	if endpoint == "" || name == "" {
+		return false
+	}
+	host := strings.ToLower(endpoint)
+	host = strings.TrimPrefix(host, "https://")
+	host = strings.TrimPrefix(host, "http://")
+	if i := strings.IndexByte(host, '/'); i >= 0 {
+		host = host[:i]
+	}
+	return strings.HasPrefix(host, strings.ToLower(name)+".")
 }
 
 // PersistEnabledEnvironment writes enable results into a local root dir (for tests / optional manager-side enable).

@@ -19,19 +19,20 @@ package controller
 import (
 	"context"
 
-	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/record"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-
+	"github.com/openziti/zrok/v2/agent/agentGrpc"
+	"github.com/stretchr/testify/mock"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/events"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	zrokv1alpha1 "github.com/vulkoingim/zrok-operator/api/v1alpha1"
 	"github.com/vulkoingim/zrok-operator/internal/status"
 	"github.com/vulkoingim/zrok-operator/internal/zrokclient"
+	zrokclientmock "github.com/vulkoingim/zrok-operator/internal/zrokclient/mock"
 )
 
 var _ = Describe("ZrokShare Controller", func() {
@@ -95,13 +96,31 @@ var _ = Describe("ZrokShare Controller", func() {
 		})
 
 		It("should create a share via the agent client", func() {
-			fakeREST := &zrokclient.FakeREST{}
-			fakeAgent := &zrokclient.FakeAgent{}
+			restMock := zrokclientmock.NewRESTClient(GinkgoT())
+			agentMock := zrokclientmock.NewAgentClient(GinkgoT())
+
+			restMock.EXPECT().
+				CreateShareName(mock.Anything, mock.Anything, mock.Anything, mock.Anything, "demo").
+				Return(nil)
+			restMock.EXPECT().
+				UpdateShareName(mock.Anything, mock.Anything, mock.Anything, mock.Anything, "demo", true).
+				Return(nil)
+			agentMock.EXPECT().
+				Status(mock.Anything, mock.Anything).
+				Return(&agentGrpc.StatusResponse{}, nil).
+				Maybe()
+			agentMock.EXPECT().
+				SharePublic(mock.Anything, mock.Anything, mock.Anything).
+				Return(&agentGrpc.SharePublicResponse{
+					Token:             "shr-token",
+					FrontendEndpoints: []string{"https://demo.share.zrok.io"},
+				}, nil)
+
 			r := &ZrokShareReconciler{
 				Client:   k8sClient,
 				Scheme:   k8sClient.Scheme(),
-				Recorder: record.NewFakeRecorder(10),
-				Zrok:     &zrokclient.Clients{REST: fakeREST, Agent: fakeAgent},
+				Recorder: events.NewFakeRecorder(10),
+				Zrok:     &zrokclient.Clients{REST: restMock, Agent: agentMock},
 			}
 
 			_, err := r.Reconcile(ctx, reconcile.Request{
@@ -119,9 +138,8 @@ var _ = Describe("ZrokShare Controller", func() {
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: shareName, Namespace: ns}, share)).To(Succeed())
 			Expect(share.Status.AssignedURL).To(Equal("https://demo.share.zrok.io"))
 			Expect(share.Status.ShareToken).To(Equal("shr-token"))
+			Expect(share.Status.Reservation).To(Equal(zrokv1alpha1.ReservationReserved))
 			Expect(status.IsTrue(share.Status.Conditions, zrokv1alpha1.ConditionReady)).To(BeTrue())
-			Expect(fakeREST.CreateNames).To(ContainElement("demo"))
-			Expect(fakeAgent.ShareCalls).To(BeNumerically(">=", 1))
 		})
 	})
 })
