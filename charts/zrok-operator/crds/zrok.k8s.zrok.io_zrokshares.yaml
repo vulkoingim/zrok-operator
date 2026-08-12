@@ -129,6 +129,10 @@ spec:
                   NameSelection reserves a sticky public frontend name (zrok v2 reserved name).
                   Omit for ephemeral public shares (random URL, gone when share ends).
                   Only valid with shareMode=public.
+
+                  zrok shares have no description/metadata field — use the reserved name (and/or
+                  upstream target URL) to identify operator-managed shares in the zrok UI.
+                  Convention: ko-<k8s-namespace>-<zrokshare-name> (see ManagedFrontendName).
                 properties:
                   name:
                     description: |-
@@ -210,6 +214,12 @@ spec:
             - environmentRef
             - upstream
             type: object
+            x-kubernetes-validations:
+            - message: nameSelection is only valid with shareMode=public
+              rule: '!(has(self.nameSelection) && self.shareMode == ''private'')'
+            - message: privateShareToken is only valid with shareMode=private
+              rule: '!(has(self.privateShareToken) && self.privateShareToken != ”
+                && self.shareMode != ''private'')'
           status:
             description: ZrokShareStatus defines the observed state of ZrokShare.
             properties:

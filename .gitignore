@@ -37,3 +37,5 @@ secrets
 bin/*
 .cursor
 .serena
+tmp/
+.memory-bank/blueprint.md

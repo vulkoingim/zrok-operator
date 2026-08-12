@@ -1,19 +1,3 @@
-/*
-Copyright 2025.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
 package controller
 
 import (
@@ -23,9 +7,11 @@ import (
 
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/events"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -34,6 +20,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	zrokv1alpha1 "github.com/vulkoingim/zrok-operator/api/v1alpha1"
+	"github.com/vulkoingim/zrok-operator/internal/status"
 )
 
 const (
@@ -149,11 +136,23 @@ func (r *IngressReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 	if share.Status.AssignedURL != "" {
 		host := strings.TrimPrefix(strings.TrimPrefix(share.Status.AssignedURL, "https://"), "http://")
-		ing.Status.LoadBalancer.Ingress = []networkingv1.IngressLoadBalancerIngress{{
-			Hostname: host,
-		}}
-		if err := r.Status().Update(ctx, ing); err != nil {
-			return ctrl.Result{}, err
+		desiredHost := host
+		already := false
+		for _, lb := range ing.Status.LoadBalancer.Ingress {
+			if lb.Hostname == desiredHost {
+				already = true
+				break
+			}
+		}
+		if !already {
+			if err := status.PatchStatus(ctx, r.Client, ing, func() error {
+				ing.Status.LoadBalancer.Ingress = []networkingv1.IngressLoadBalancerIngress{{
+					Hostname: desiredHost,
+				}}
+				return nil
+			}); err != nil {
+				return ctrl.Result{}, err
+			}
 		}
 	}
 
@@ -162,8 +161,15 @@ func (r *IngressReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *IngressReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	classPred := predicate.NewPredicateFuncs(func(obj client.Object) bool {
+		ing, ok := obj.(*networkingv1.Ingress)
+		if !ok {
+			return false
+		}
+		return ing.Spec.IngressClassName != nil && *ing.Spec.IngressClassName == IngressClassName
+	})
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&networkingv1.Ingress{}).
+		For(&networkingv1.Ingress{}, builder.WithPredicates(classPred)).
 		Owns(&zrokv1alpha1.ZrokShare{}).
 		Named("zrok-ingress").
 		Complete(r)

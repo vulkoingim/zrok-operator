@@ -1,19 +1,3 @@
-/*
-Copyright 2025.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
 package status
 
 import (
@@ -21,28 +5,44 @@ import (
 )
 
 // SetCondition upserts a condition into the slice.
+// No-op when type/status/reason/message/observedGeneration are unchanged.
 func SetCondition(conditions *[]metav1.Condition, conditionType string, status metav1.ConditionStatus, reason, message string, observedGeneration int64) {
-	now := metav1.Now()
-	newCond := metav1.Condition{
-		Type:               conditionType,
-		Status:             status,
-		Reason:             reason,
-		Message:            truncate(message, 1024),
-		LastTransitionTime: now,
-		ObservedGeneration: observedGeneration,
-	}
+	message = truncate(message, 1024)
 
 	for i := range *conditions {
 		if (*conditions)[i].Type != conditionType {
 			continue
 		}
-		if (*conditions)[i].Status == status {
-			newCond.LastTransitionTime = (*conditions)[i].LastTransitionTime
+		cur := &(*conditions)[i]
+		if cur.Status == status &&
+			cur.Reason == reason &&
+			cur.Message == message &&
+			cur.ObservedGeneration == observedGeneration {
+			return
 		}
-		(*conditions)[i] = newCond
+		now := metav1.Now()
+		if cur.Status == status {
+			now = cur.LastTransitionTime
+		}
+		*cur = metav1.Condition{
+			Type:               conditionType,
+			Status:             status,
+			Reason:             reason,
+			Message:            message,
+			LastTransitionTime: now,
+			ObservedGeneration: observedGeneration,
+		}
 		return
 	}
-	*conditions = append(*conditions, newCond)
+
+	*conditions = append(*conditions, metav1.Condition{
+		Type:               conditionType,
+		Status:             status,
+		Reason:             reason,
+		Message:            message,
+		LastTransitionTime: metav1.Now(),
+		ObservedGeneration: observedGeneration,
+	})
 }
 
 // IsTrue reports whether a condition type is True.

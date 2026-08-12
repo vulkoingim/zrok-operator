@@ -1,19 +1,3 @@
-/*
-Copyright 2025.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
 package v1alpha1
 
 import (
@@ -22,6 +6,9 @@ import (
 )
 
 // ZrokShareSpec defines the desired state of ZrokShare.
+//
+// +kubebuilder:validation:XValidation:rule="!(has(self.nameSelection) && self.shareMode == 'private')",message="nameSelection is only valid with shareMode=public"
+// +kubebuilder:validation:XValidation:rule="!(has(self.privateShareToken) && self.privateShareToken != ” && self.shareMode != 'private')",message="privateShareToken is only valid with shareMode=private"
 type ZrokShareSpec struct {
 	// EnvironmentRef references a ZrokEnvironment in the same namespace.
 	// +kubebuilder:validation:Required
@@ -48,6 +35,10 @@ type ZrokShareSpec struct {
 	// NameSelection reserves a sticky public frontend name (zrok v2 reserved name).
 	// Omit for ephemeral public shares (random URL, gone when share ends).
 	// Only valid with shareMode=public.
+	//
+	// zrok shares have no description/metadata field — use the reserved name (and/or
+	// upstream target URL) to identify operator-managed shares in the zrok UI.
+	// Convention: ko-<k8s-namespace>-<zrokshare-name> (see ManagedFrontendName).
 	// +optional
 	NameSelection *NameSelectionSpec `json:"nameSelection,omitempty"`
 

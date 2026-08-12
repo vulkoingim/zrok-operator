@@ -12,17 +12,11 @@ ZrokShare        →  agent SharePublic via HTTP console gateway (:8888)
 ZrokAccess       →  agent AccessPrivate (private share consumer)
 ```
 
-Manager talks to the agent over the TCP HTTP console (`/v1/agent/*`) because agent gRPC is unix-socket-only.
-
 ## Quickstart (Kind)
 
 ```bash
-# Build & load
-make docker-build IMG=zrok-operator:dev
-kind load docker-image zrok-operator:dev
-
-# Install CRDs + manager
-make deploy IMG=zrok-operator:dev
+mise install
+mise run kind-deploy
 
 # Credentials (zrok.io or self-hosted enable token)
 kubectl create secret generic zrok-credentials \
@@ -36,12 +30,6 @@ kubectl wait --for=condition=Ready zrokshare/nginx --timeout=180s
 kubectl get zrokshare nginx -o jsonpath='{.status.assignedURL}{"\n"}'
 ```
 
-### Self-hosted zrok
-
-1. Install OpenZiti + [`openziti/zrok2`](https://netfoundry.io/docs/zrok/self-hosting/deployment/kubernetes).
-2. Read the ziggy token: `kubectl -n zrok2 get secret zrok2-ziggy-account-token -o jsonpath='{.data.token}' | base64 -d`
-3. Set `spec.apiEndpoint` on `ZrokEnvironment` to your controller URL (e.g. `https://zrok2.share.example.com`).
-
 ## CRDs
 
 ### ZrokEnvironment
@@ -53,13 +41,13 @@ Owns agent PVC + Deployment. Requires `enableTokenSecretRef`.
 ```yaml
 spec:
   environmentRef: { name: default }
-  shareMode: public          # public|private
-  backendMode: proxy         # proxy|web|caddy|drive|tcpTunnel|udpTunnel|socks
+  shareMode: public # public|private
+  backendMode: proxy # proxy|web|caddy|drive|tcpTunnel|udpTunnel|socks
   upstream: { url: http://mysvc.ns.svc:80 }
-  nameSelection:             # strongly recommended (agent auto-restart)
+  nameSelection: # strongly recommended (agent auto-restart)
     namespace: public
     name: myapp
-  basicAuthSecretRef: { name: my-basic-auth }   # keys: username, password
+  basicAuthSecretRef: { name: my-basic-auth } # keys: username, password
   oauth:
     provider: google
     emailDomains: ["example.com"]
@@ -95,23 +83,18 @@ mise run test-e2e            # Kind e2e; set ZROK2_ENABLE_TOKEN for live share
 mise run samples --secret    # apply sample CRs (creates secret from env)
 ```
 
-Longer flows live under `.mise-tasks/`; short ones in `mise.toml`. Makefile targets still work if you prefer them.
-
-```bash
-make generate manifests
-make test
-make run
-```
+Longer flows live under `.mise-tasks/`; short ones in `mise.toml`.
+`Makefile` runs the same recipes / file-tasks directly (does not invoke `mise run`).
 
 ## Ingress translation
 
 Create an Ingress with `ingressClassName: zrok` (see `config/samples/ingress_zrok.yaml`). Annotations:
 
-| Annotation | Purpose |
-|---|---|
-| `zrok.k8s.zrok.io/environment` | ZrokEnvironment name (default `default`) |
-| `zrok.k8s.zrok.io/name` | Reserved frontend name |
-| `zrok.k8s.zrok.io/namespace-token` | Namespace token (default `public`) |
+| Annotation                         | Purpose                                  |
+| ---------------------------------- | ---------------------------------------- |
+| `zrok.k8s.zrok.io/environment`     | ZrokEnvironment name (default `default`) |
+| `zrok.k8s.zrok.io/name`            | Reserved frontend name                   |
+| `zrok.k8s.zrok.io/namespace-token` | Namespace token (default `public`)       |
 
 The controller creates an owned `ZrokShare` and mirrors `status.assignedURL` onto the Ingress load balancer hostname.
 

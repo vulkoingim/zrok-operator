@@ -12,12 +12,10 @@ jobs:
       - name: Clone the code
         uses: actions/checkout@v4
 
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
+      - name: Setup mise
+        uses: jdx/mise-action@v2
 
       - name: Running Tests
         run: |
           go mod tidy
-          make test
+          mise run test

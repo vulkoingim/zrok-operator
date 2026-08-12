@@ -38,6 +38,7 @@ import (
 
 	zrokv1alpha1 "github.com/vulkoingim/zrok-operator/api/v1alpha1"
 	"github.com/vulkoingim/zrok-operator/internal/agent"
+	opmetrics "github.com/vulkoingim/zrok-operator/internal/metrics"
 	"github.com/vulkoingim/zrok-operator/internal/status"
 	"github.com/vulkoingim/zrok-operator/internal/zrokclient"
 )
@@ -84,68 +85,94 @@ func (r *ZrokEnvironmentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 	token, err := r.readEnableToken(ctx, env)
 	if err != nil {
-		r.setNotReady(ctx, env, "SecretError", err.Error())
+		_ = r.setNotReady(ctx, env, "SecretError", err.Error())
+		opmetrics.EnvironmentReconcileErrors.Inc()
 		r.Recorder.Eventf(env, nil, corev1.EventTypeWarning, "SecretError", "Error", "%s", err.Error())
 		return ctrl.Result{}, err
 	}
 
 	if err = r.ensureEnabled(ctx, env, token); err != nil {
-		r.setNotReady(ctx, env, "EnableError", err.Error())
+		_ = r.setNotReady(ctx, env, "EnableError", err.Error())
+		opmetrics.EnvironmentReconcileErrors.Inc()
 		r.Recorder.Eventf(env, nil, corev1.EventTypeWarning, "EnableError", "Error", "%s", err.Error())
 		return ctrl.Result{}, err
 	}
 
 	if err = r.ensurePVC(ctx, env); err != nil {
-		r.setNotReady(ctx, env, "PVCError", err.Error())
+		_ = r.setNotReady(ctx, env, "PVCError", err.Error())
+		opmetrics.EnvironmentReconcileErrors.Inc()
 		return ctrl.Result{}, err
 	}
 
 	if err = r.ensureService(ctx, env); err != nil {
-		r.setNotReady(ctx, env, "ServiceError", err.Error())
+		_ = r.setNotReady(ctx, env, "ServiceError", err.Error())
+		opmetrics.EnvironmentReconcileErrors.Inc()
 		return ctrl.Result{}, err
 	}
 
 	if err = r.ensureDeployment(ctx, env); err != nil {
-		r.setNotReady(ctx, env, "DeploymentError", err.Error())
+		_ = r.setNotReady(ctx, env, "DeploymentError", err.Error())
+		opmetrics.EnvironmentReconcileErrors.Inc()
 		return ctrl.Result{}, err
 	}
 
 	agentReady, err := r.isAgentReady(ctx, env)
 	if err != nil {
-		r.setNotReady(ctx, env, "AgentCheckError", err.Error())
+		_ = r.setNotReady(ctx, env, "AgentCheckError", err.Error())
+		opmetrics.EnvironmentReconcileErrors.Inc()
 		return ctrl.Result{}, err
 	}
 
-	env.Status.ObservedGeneration = env.Generation
-	env.Status.AgentService = fmt.Sprintf("%s.%s.svc", agent.ServiceName(env), env.Namespace)
-	env.Status.AgentReady = agentReady
+	agentService := fmt.Sprintf("%s.%s.svc", agent.ServiceName(env), env.Namespace)
 
 	if !agentReady {
-		status.SetCondition(&env.Status.Conditions, zrokv1alpha1.ConditionAgentReady, metav1.ConditionFalse, "Waiting", "agent Deployment not ready", env.Generation)
-		status.SetCondition(&env.Status.Conditions, zrokv1alpha1.ConditionEnabled, metav1.ConditionTrue, "Enabled", "remote environment enabled", env.Generation)
-		status.SetCondition(&env.Status.Conditions, zrokv1alpha1.ConditionReady, metav1.ConditionFalse, "WaitingForAgent", "agent not ready", env.Generation)
-		if err := r.Status().Update(ctx, env); err != nil {
+		if err := status.PatchStatus(ctx, r.Client, env, func() error {
+			env.Status.ObservedGeneration = env.Generation
+			env.Status.AgentService = agentService
+			env.Status.AgentReady = false
+			status.SetCondition(&env.Status.Conditions, zrokv1alpha1.ConditionAgentReady, metav1.ConditionFalse, "Waiting", "agent Deployment not ready", env.Generation)
+			status.SetCondition(&env.Status.Conditions, zrokv1alpha1.ConditionEnabled, metav1.ConditionTrue, "Enabled", "remote environment enabled", env.Generation)
+			status.SetCondition(&env.Status.Conditions, zrokv1alpha1.ConditionReady, metav1.ConditionFalse, "WaitingForAgent", "agent not ready", env.Generation)
+			return nil
+		}); err != nil {
 			return ctrl.Result{}, err
 		}
+		opmetrics.SetEnvironmentReady(env.Namespace, env.Name, false)
 		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 	}
 
-	if _, err := r.Zrok.Agent.Status(ctx, agent.AgentDialAddr(env)); err != nil {
-		logger.Info("agent status not ready yet", "error", err)
-		status.SetCondition(&env.Status.Conditions, zrokv1alpha1.ConditionAgentReady, metav1.ConditionFalse, "ConsoleUnreachable", err.Error(), env.Generation)
-		status.SetCondition(&env.Status.Conditions, zrokv1alpha1.ConditionReady, metav1.ConditionFalse, "ConsoleUnreachable", err.Error(), env.Generation)
-		_ = r.Status().Update(ctx, env)
+	if _, statusErr := r.Zrok.Agent.Status(ctx, agent.AgentDialAddr(env)); statusErr != nil {
+		logger.Info("agent status not ready yet", "error", statusErr)
+		if err := status.PatchStatus(ctx, r.Client, env, func() error {
+			env.Status.ObservedGeneration = env.Generation
+			env.Status.AgentService = agentService
+			env.Status.AgentReady = false
+			status.SetCondition(&env.Status.Conditions, zrokv1alpha1.ConditionAgentReady, metav1.ConditionFalse, "ConsoleUnreachable", statusErr.Error(), env.Generation)
+			status.SetCondition(&env.Status.Conditions, zrokv1alpha1.ConditionReady, metav1.ConditionFalse, "ConsoleUnreachable", statusErr.Error(), env.Generation)
+			return nil
+		}); err != nil {
+			return ctrl.Result{}, err
+		}
+		opmetrics.SetEnvironmentReady(env.Namespace, env.Name, false)
 		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 	}
 
-	status.SetCondition(&env.Status.Conditions, zrokv1alpha1.ConditionAgentReady, metav1.ConditionTrue, "Ready", "agent gRPC reachable", env.Generation)
-	status.SetCondition(&env.Status.Conditions, zrokv1alpha1.ConditionEnabled, metav1.ConditionTrue, "Enabled", "environment enabled", env.Generation)
-	status.SetCondition(&env.Status.Conditions, zrokv1alpha1.ConditionReady, metav1.ConditionTrue, "Ready", "environment ready", env.Generation)
-	if err := r.Status().Update(ctx, env); err != nil {
+	wasReady := status.IsTrue(env.Status.Conditions, zrokv1alpha1.ConditionReady)
+	if err := status.PatchStatus(ctx, r.Client, env, func() error {
+		env.Status.ObservedGeneration = env.Generation
+		env.Status.AgentService = agentService
+		env.Status.AgentReady = true
+		status.SetCondition(&env.Status.Conditions, zrokv1alpha1.ConditionAgentReady, metav1.ConditionTrue, "Ready", "agent gRPC reachable", env.Generation)
+		status.SetCondition(&env.Status.Conditions, zrokv1alpha1.ConditionEnabled, metav1.ConditionTrue, "Enabled", "environment enabled", env.Generation)
+		status.SetCondition(&env.Status.Conditions, zrokv1alpha1.ConditionReady, metav1.ConditionTrue, "Ready", "environment ready", env.Generation)
+		return nil
+	}); err != nil {
 		return ctrl.Result{}, err
 	}
-
-	r.Recorder.Eventf(env, nil, corev1.EventTypeNormal, "Ready", "Ready", "ZrokEnvironment is ready")
+	opmetrics.SetEnvironmentReady(env.Namespace, env.Name, true)
+	if !wasReady {
+		r.Recorder.Eventf(env, nil, corev1.EventTypeNormal, "Ready", "Ready", "ZrokEnvironment is ready")
+	}
 	return ctrl.Result{RequeueAfter: 2 * time.Minute}, nil
 }
 
@@ -165,8 +192,11 @@ func (r *ZrokEnvironmentReconciler) reconcileDelete(ctx context.Context, env *zr
 			continue
 		}
 		msg := fmt.Sprintf("cannot delete environment while share %s exists", s.Name)
-		status.SetCondition(&env.Status.Conditions, zrokv1alpha1.ConditionReady, metav1.ConditionFalse, "SharesExist", msg, env.Generation)
-		_ = r.Status().Update(ctx, env)
+		_ = status.PatchStatus(ctx, r.Client, env, func() error {
+			status.SetCondition(&env.Status.Conditions, zrokv1alpha1.ConditionReady, metav1.ConditionFalse, "SharesExist", msg, env.Generation)
+			return nil
+		})
+		opmetrics.SetEnvironmentReady(env.Namespace, env.Name, false)
 		r.Recorder.Eventf(env, nil, corev1.EventTypeWarning, "SharesExist", "Error", "%s", msg)
 		return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
 	}
@@ -200,6 +230,7 @@ func (r *ZrokEnvironmentReconciler) reconcileDelete(ctx context.Context, env *zr
 	if err := r.Update(ctx, env); err != nil {
 		return ctrl.Result{}, err
 	}
+	opmetrics.DeleteEnvironmentReady(env.Namespace, env.Name)
 	return ctrl.Result{}, nil
 }
 
@@ -234,8 +265,10 @@ func (r *ZrokEnvironmentReconciler) ensureEnabled(ctx context.Context, env *zrok
 	if err == nil {
 		if env.Status.EnvZID == "" {
 			if zid := string(existing.Data["envZID"]); zid != "" {
-				env.Status.EnvZID = zid
-				if statusErr := r.Status().Update(ctx, env); statusErr != nil {
+				if statusErr := status.PatchStatus(ctx, r.Client, env, func() error {
+					env.Status.EnvZID = zid
+					return nil
+				}); statusErr != nil {
 					return statusErr
 				}
 			}
@@ -248,8 +281,10 @@ func (r *ZrokEnvironmentReconciler) ensureEnabled(ctx context.Context, env *zrok
 
 	if env.Status.EnvZID != "" {
 		// Status has EnvZID but Secret missing (manual delete) — cannot rebuild identity cfg; force re-enable.
-		env.Status.EnvZID = ""
-		_ = r.Status().Update(ctx, env)
+		_ = status.PatchStatus(ctx, r.Client, env, func() error {
+			env.Status.EnvZID = ""
+			return nil
+		})
 	}
 
 	host := fmt.Sprintf("k8s/%s/%s", env.Namespace, env.Name)
@@ -300,9 +335,11 @@ func (r *ZrokEnvironmentReconciler) ensureEnabled(ctx context.Context, env *zrok
 		return err
 	}
 
-	env.Status.EnvZID = zid
-	status.SetCondition(&env.Status.Conditions, zrokv1alpha1.ConditionEnabled, metav1.ConditionTrue, "Enabled", "remote environment enabled", env.Generation)
-	if err := r.Status().Update(ctx, env); err != nil {
+	if err := status.PatchStatus(ctx, r.Client, env, func() error {
+		env.Status.EnvZID = zid
+		status.SetCondition(&env.Status.Conditions, zrokv1alpha1.ConditionEnabled, metav1.ConditionTrue, "Enabled", "remote environment enabled", env.Generation)
+		return nil
+	}); err != nil {
 		return err
 	}
 	r.Recorder.Eventf(env, nil, corev1.EventTypeNormal, "Enabled", "Enable", "enabled remote environment %s", zid)
@@ -374,11 +411,15 @@ func (r *ZrokEnvironmentReconciler) isAgentReady(ctx context.Context, env *zrokv
 	return dep.Status.ReadyReplicas >= 1 && dep.Status.UpdatedReplicas >= 1, nil
 }
 
-func (r *ZrokEnvironmentReconciler) setNotReady(ctx context.Context, env *zrokv1alpha1.ZrokEnvironment, reason, message string) {
-	env.Status.ObservedGeneration = env.Generation
-	env.Status.AgentReady = false
-	status.SetCondition(&env.Status.Conditions, zrokv1alpha1.ConditionReady, metav1.ConditionFalse, reason, message, env.Generation)
-	_ = r.Status().Update(ctx, env)
+func (r *ZrokEnvironmentReconciler) setNotReady(ctx context.Context, env *zrokv1alpha1.ZrokEnvironment, reason, message string) error {
+	err := status.PatchStatus(ctx, r.Client, env, func() error {
+		env.Status.ObservedGeneration = env.Generation
+		env.Status.AgentReady = false
+		status.SetCondition(&env.Status.Conditions, zrokv1alpha1.ConditionReady, metav1.ConditionFalse, reason, message, env.Generation)
+		return nil
+	})
+	opmetrics.SetEnvironmentReady(env.Namespace, env.Name, false)
+	return err
 }
 
 // SetupWithManager sets up the controller with the Manager.

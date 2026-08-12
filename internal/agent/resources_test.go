@@ -1,22 +1,7 @@
-/*
-Copyright 2025.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
 package agent
 
 import (
+	"strings"
 	"testing"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -44,5 +29,18 @@ func TestDesiredResources(t *testing.T) {
 	}
 	if dep.Spec.Template.Spec.Containers[0].Name != AppName {
 		t.Fatalf("unexpected container")
+	}
+	cmd := dep.Spec.Template.Spec.Containers[0].Command
+	if len(cmd) < 3 || !strings.Contains(cmd[2], "agent-registry.json") || !strings.Contains(cmd[2], "zrok2 agent start") {
+		t.Fatalf("agent start must wipe registry: %v", cmd)
+	}
+}
+
+func TestManagedFrontendName(t *testing.T) {
+	share := &zrokv1alpha1.ZrokShare{
+		ObjectMeta: metav1.ObjectMeta{Name: "nginx", Namespace: "default"},
+	}
+	if got := ManagedFrontendName(share); got != "ko-default-nginx" {
+		t.Fatalf("got %s", got)
 	}
 }

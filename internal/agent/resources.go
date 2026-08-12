@@ -1,19 +1,3 @@
-/*
-Copyright 2025.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
 package agent
 
 import (
@@ -65,6 +49,13 @@ func IdentitySecretName(env *zrokv1alpha1.ZrokEnvironment) string {
 // EnvironmentDescription is the remote zrok environment description (for UI / matching).
 func EnvironmentDescription(env *zrokv1alpha1.ZrokEnvironment) string {
 	return fmt.Sprintf("zrok-operator/%s/%s", env.Namespace, env.Name)
+}
+
+// ManagedFrontendName is the recommended reserved-name convention for operator-managed
+// public shares. Visible in the zrok UI as the frontend subdomain.
+// Example: ko-default-nginx → https://ko-default-nginx.shares.zrok.io
+func ManagedFrontendName(share *zrokv1alpha1.ZrokShare) string {
+	return fmt.Sprintf("ko-%s-%s", share.Namespace, share.Name)
 }
 
 // Labels returns standard labels for agent resources owned by env.
@@ -287,7 +278,9 @@ func DesiredDeployment(env *zrokv1alpha1.ZrokEnvironment) *appsv1.Deployment {
 							Command: []string{
 								"bash",
 								"-c",
-								`rm -f /mnt/.zrok2/agent.socket && exec zrok2 agent start --console-address 0.0.0.0 --console-start-port "$PORT" --console-end-port "$PORT"`,
+								// Operator owns share lifecycle: wipe agent registry so ReloadRegistry
+								// does not race SharePublic against live remote reserved names (409 loop).
+								`rm -f /mnt/.zrok2/agent.socket /mnt/.zrok2/agent-registry.json && exec zrok2 agent start --console-address 0.0.0.0 --console-start-port "$PORT" --console-end-port "$PORT"`,
 							},
 							Env: []corev1.EnvVar{
 								{Name: "HOME", Value: homeMountPath},
