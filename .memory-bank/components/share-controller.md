@@ -82,9 +82,9 @@ Reconciler entry: `Reconcile(ctx, req) (Result, error)` via controller-runtime.
 
 Key internals:
 
-- `loadInventory` / `classifyShare` (`share_inventory.go`)
+- `loadInventory` / `classifyShare` / `otherShareWithFrontendName` (`share_inventory.go`)
 - `ensureReservedName`: `CreateShareName` + `UpdateShareName(..., true)`
-- `releaseOurs` / `handleShareConflict`
+- `releaseOurs` / `handleShareConflict` / `setNameConflict` (transition-only event)
 - Delete: resolve owned token → Release → Unshare → DeleteShareName
 
 Conditions used: `Ready`, `EnvironmentReady`, `ShareCreated`, `NameReady`. Ready reason `NameConflict` when the reserved name is foreign.

@@ -14,7 +14,7 @@
 
 ## Recent Progress
 
-- **Share ownership inventory** (2026-08-13): `ListShares` + agent Status + CR. Adopt/Unshare only if target matches `spec.upstream`. Foreign reserved name → NameConflict (no Unshare). Env Enable host+description `zrok-operator/{ns}/{name}`. K8s `ShareLabels` on ZrokShare. CEL `privateShareToken` rule uses `size()` (broken curly quotes).
+- **Share ownership inventory** (2026-08-13): `ListShares` + agent Status + CR. Adopt/Unshare only if target matches `spec.upstream`. Foreign reserved name **or another ZrokShare claiming the same name** → NameConflict (no Unshare). Empty agent backend is not a match. ListShares failure keeps Ready if the agent still serves the share. NameConflict events are transition-only.
 
 - **CI speed/correctness** (2026-08-12): lint → setup-go@v6 + golangci-lint-action@v9; test/e2e → mise-action@v4 (pinned 2026.8.2, scoped install_args) + Go/envtest caches; concurrency + main/PR-only triggers; tidy gate. See [build-deployment.md](build-deployment.md).
 

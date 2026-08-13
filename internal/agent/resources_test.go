@@ -67,10 +67,10 @@ func TestShareLabels(t *testing.T) {
 		},
 	}
 	got := ShareLabels(share)
-	if got["zrok.k8s.zrok.io/environment"] != "env" {
+	if got[LabelEnvironment] != "env" {
 		t.Fatalf("env label: %v", got)
 	}
-	if got["zrok.k8s.zrok.io/frontend-name"] != "demo" {
+	if got[LabelFrontendName] != "demo" {
 		t.Fatalf("frontend label: %v", got)
 	}
 	if got["app.kubernetes.io/managed-by"] != "zrok-operator" {

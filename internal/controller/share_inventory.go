@@ -111,12 +111,12 @@ func classifyShare(share *zrokv1alpha1.ZrokShare, desiredTarget string, inv shar
 }
 
 func agentTargetOK(s *agentGrpc.ShareDetail, desiredTarget string) bool {
-	if s == nil {
+	if s == nil || desiredTarget == "" {
 		return false
 	}
 	be := s.GetBackendEndpoint()
 	if be == "" {
-		return true
+		return false
 	}
 	return zrokclient.TargetsEqual(be, desiredTarget)
 }
@@ -131,8 +131,27 @@ func isOurShareToken(share *zrokv1alpha1.ZrokShare, token string, inv shareInven
 	if rem := inv.remoteByToken(token); rem != nil {
 		return zrokclient.TargetsEqual(rem.Target, share.Spec.Upstream.URL)
 	}
-	if d := inv.agentByToken(token); d != nil {
-		return agentTargetOK(d, share.Spec.Upstream.URL)
+	// Live in this environment's agent → ours (the agent is not shared across accounts).
+	return inv.agentByToken(token) != nil
+}
+
+// otherShareWithFrontendName returns another non-deleting ZrokShare that claims the same reserved name.
+func otherShareWithFrontendName(self *zrokv1alpha1.ZrokShare, all []zrokv1alpha1.ZrokShare) *zrokv1alpha1.ZrokShare {
+	name := reservedFrontendName(self)
+	if name == "" {
+		return nil
 	}
-	return false
+	for i := range all {
+		o := &all[i]
+		if o.Name == self.Name && o.Namespace == self.Namespace {
+			continue
+		}
+		if !o.DeletionTimestamp.IsZero() {
+			continue
+		}
+		if reservedFrontendName(o) == name {
+			return o
+		}
+	}
+	return nil
 }

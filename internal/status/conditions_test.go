@@ -26,6 +26,9 @@ func TestSetCondition(t *testing.T) {
 	if !IsTrue(conditions, "Ready") {
 		t.Fatal("expected Ready=True")
 	}
+	if Reason(conditions, "Ready") != "Ready" {
+		t.Fatal("expected reason Ready")
+	}
 	if conditions[0].LastTransitionTime.Equal(&firstTransition) {
 		t.Fatal("expected transition time to change on status flip")
 	}

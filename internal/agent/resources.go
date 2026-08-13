@@ -39,6 +39,10 @@ const (
 	deploySuffix   = "-agent"
 	svcSuffix      = "-agent"
 	idSecretSuffix = "-zrok-identity"
+
+	LabelEnvironment  = "zrok.k8s.zrok.io/environment"
+	LabelShareMode    = "zrok.k8s.zrok.io/share-mode"
+	LabelFrontendName = "zrok.k8s.zrok.io/frontend-name"
 )
 
 // IdentitySecretName returns the Secret that seeds agent ~/.zrok2.
@@ -67,11 +71,11 @@ func ShareLabels(share *zrokv1alpha1.ZrokShare) map[string]string {
 		"app.kubernetes.io/name":       "zrok-share",
 		"app.kubernetes.io/instance":   share.Name,
 		"app.kubernetes.io/managed-by": "zrok-operator",
-		"zrok.k8s.zrok.io/environment": share.Spec.EnvironmentRef.Name,
-		"zrok.k8s.zrok.io/share-mode":  mode,
+		LabelEnvironment:               share.Spec.EnvironmentRef.Name,
+		LabelShareMode:                 mode,
 	}
 	if share.Spec.NameSelection != nil && share.Spec.NameSelection.Name != "" {
-		labels["zrok.k8s.zrok.io/frontend-name"] = share.Spec.NameSelection.Name
+		labels[LabelFrontendName] = share.Spec.NameSelection.Name
 	}
 	return labels
 }
@@ -90,7 +94,7 @@ func Labels(env *zrokv1alpha1.ZrokEnvironment) map[string]string {
 		"app.kubernetes.io/instance":   env.Name,
 		"app.kubernetes.io/component":  "agent",
 		"app.kubernetes.io/managed-by": "zrok-operator",
-		"zrok.k8s.zrok.io/environment": env.Name,
+		LabelEnvironment:               env.Name,
 	}
 }
 

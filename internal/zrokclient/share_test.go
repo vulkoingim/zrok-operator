@@ -36,3 +36,16 @@ func TestFindByFrontendName(t *testing.T) {
 		t.Fatal("expected nil")
 	}
 }
+
+func TestFrontendEndpointMatchesName(t *testing.T) {
+	t.Parallel()
+	if !FrontendEndpointMatchesName("https://demo.share.zrok.io", "demo") {
+		t.Fatal("expected match")
+	}
+	if FrontendEndpointMatchesName("https://demo-extra.share.zrok.io", "demo") {
+		t.Fatal("prefix must require a dot after the name")
+	}
+	if FrontendEndpointMatchesName("https://xdemo.share.zrok.io", "demo") {
+		t.Fatal("must not match suffix")
+	}
+}

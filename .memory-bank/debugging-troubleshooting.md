@@ -45,7 +45,8 @@ Check: enable token Secret, identity Secret keys, PVC mount, agent probe `/v1/ag
 
 ### UI says Reservation ephemeral but name is reserved
 
-Share detail UI can lie; check Names list / overview API `reserved=true`.
+**Cause (zrok UI, not the operator):** `GET /share` (`Share` / SharePanel) has **no `reserved` field**. The panel formatter treats missing as ephemeral. Reservation lives on the **Name** (`CreateShareName` already inserts `reserved=true`; Unshare keeps the name).  
+**Fix:** Look at the Names list / overview `names[].reserved`, not the Share panel. `kubectl get zrokshare` `RESERVATION` column is `status.reservation` from *this* operator (`ephemeral|reserved|private`) and should be `reserved` when `spec.nameSelection` is set.
 
 ### Manager can’t dial agent
 

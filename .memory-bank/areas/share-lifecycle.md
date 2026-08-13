@@ -54,7 +54,10 @@ Invalid: `nameSelection` with private; `privateShareToken` with public.
 - Adopt **active** agent share only if frontend name matches **and** backend target matches
 - Name held remotely, **same target**, agent empty → Unshare **our** token (reserved name stays) → SharePublic (registry-wipe heal)
 - Name held remotely, **different target**, CR does not own that token → `NameConflict`, **never Unshare**
+- Another `ZrokShare` already claims the same `nameSelection` (any namespace) → `NameConflict`, **never Unshare**
 - SharePublic 409: re-inventory; same rules (adopt ours / rebind ours / NameConflict)
+- Agent `BackendEndpoint` empty or inactive → do not adopt; Release + recreate
+- `ListShares` error: if the agent still has our active matching share, stay Ready; otherwise `InventoryError`
 
 ### Heal
 
@@ -83,9 +86,11 @@ Does **not** Own K8s children. Watches Environments → map to Shares (`mapEnvTo
 | Scenario | Behavior |
 |---|---|
 | Remote name held, different target | NameConflict; leave remote share |
-| Remote name held, same target, agent empty | Unshare ours + recreate |
+| Two CRs same reserved name | NameConflict on the second; delete of one does not DeleteShareName |
+| Remote name held, same target, agent empty | Unshare ours + recreate (only if no other CR claims the name) |
 | Status token set, agent restarted | Heal Unshare our token + recreate (reserved keeps name) |
-| Delete without ShareToken | Discover token by name+target only |
+| ListShares down, agent still serving | Stay Ready from agent Status |
+| Delete without ShareToken | Discover token by name+target only if no other CR claims the name |
 | DeleteShareName 409 attached to foreign share | Leave name; event NameRetained |
 | Ephemeral after agent restart | Share gone; reconcile creates new random name |
 

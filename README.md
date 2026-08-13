@@ -8,9 +8,11 @@ This is a **client-side** operator (enable → agent → share), complementary t
 
 ```
 ZrokEnvironment  →  PVC + zrok2 agent Deployment (data plane)
-ZrokShare        →  agent SharePublic via HTTP console gateway (:8888)
-ZrokAccess       →  agent AccessPrivate (private share consumer)
+ZrokShare        →  agent gRPC SharePublic/SharePrivate (TCP :7777 → unix agent.socket)
+ZrokAccess       →  agent gRPC AccessPrivate
 ```
+
+Manager talks to the agent over **gRPC**, not HTTP `/v1/agent/*`. Agent registry is wiped on every start (operator owns share lifecycle). Sticky public URLs need `spec.nameSelection`.
 
 ## Quickstart (Kind)
 
@@ -32,32 +34,104 @@ kubectl get zrokshare nginx -o jsonpath='{.status.assignedURL}{"\n"}'
 
 ## CRDs
 
+Short names: `zrokkenv`, `zrokshare`, `zrokaccess`.
+
+zrok Share objects have **no description/labels**. Identity in the UI is env `description`/`host` (`zrok-operator/<ns>/<env>`), the **name**, and the upstream target.
+
+[Reserved vs ephemeral is a property of the **name**, not the share](https://netfoundry.io/docs/zrok/concepts/namespaces/). `spec.nameSelection` is `zrok2 create name -n <ns> <name>` then `zrok2 share public … -n <ns>:<name>` ([manage reserved names](https://netfoundry.io/docs/zrok/how-tos/shares/manage-reserved-names/)). The Share panel has no `reserved` field so it always renders ephemeral — look at **Names** (`zrok2 list names` / UI Names list, `reserved=true`). `kubectl get zrokshare` `RESERVATION` is our `status.reservation`.
+
 ### ZrokEnvironment
 
 Owns agent PVC + Deployment. Requires `enableTokenSecretRef`.
 
+```yaml
+apiVersion: zrok.k8s.zrok.io/v1alpha1
+kind: ZrokEnvironment
+metadata:
+  name: default
+spec:
+  # apiEndpoint: https://api-v2.zrok.io   # omit = public zrok.io; set for self-hosted
+  enableTokenSecretRef:
+    name: zrok-credentials          # required
+    key: enable-token               # default key name if omitted
+  reclaimPolicy: Delete             # Delete | Retain  (Disable remote env on CR delete?)
+  agent:
+    image: docker.io/openziti/zrok2:2.0.4   # omit = this default
+    replicas: 1                     # only 1 allowed (Recreate)
+    consolePort: 8888               # HTTP console in-pod; manager uses gRPC :7777
+    persistence:
+      size: 1Gi                     # PVC for ~/.zrok2
+      # storageClassName: standard  # omit = cluster default
+    # resources:                    # standard corev1 ResourceRequirements
+    #   requests: { cpu: 50m, memory: 64Mi }
+    #   limits:   { cpu: 500m, memory: 256Mi }
+status:
+  envZID: ""                        # ziti identity after Enable
+  agentService: default-agent.default.svc
+  agentReady: true
+  conditions:                       # Ready | Enabled | AgentReady
+    - type: Ready                   # True | False | Unknown
+      reason: Ready                 # Ready | WaitingForAgent | SharesExist | …
+```
+
 ### ZrokShare
 
 ```yaml
+apiVersion: zrok.k8s.zrok.io/v1alpha1
+kind: ZrokShare
+metadata:
+  name: nginx
 spec:
-  environmentRef: { name: default }
-  shareMode: public # public|private
-  backendMode: proxy # proxy|web|caddy|drive|tcpTunnel|udpTunnel|socks
-  upstream: { url: http://mysvc.ns.svc:80 }
-  nameSelection: # strongly recommended (agent auto-restart)
-    namespace: public
-    name: myapp
-  basicAuthSecretRef: { name: my-basic-auth } # keys: username, password
-  oauth:
-    provider: google
-    emailDomains: ["example.com"]
+  environmentRef: { name: default } # required; same namespace
+  shareMode: public                 # public | private   (default public)
+  backendMode: proxy                # proxy | web | caddy | drive | tcpTunnel | udpTunnel | socks
+  upstream:
+    url: http://nginx.default.svc:80   # required; scheme http|https|tcp|udp
+  nameSelection:                    # public only; omit = ephemeral random URL (dies on agent restart)
+    namespace: public               # zrok namespace token (default public)
+    name: ko-default-nginx          # DNS label [a-z0-9][a-z0-9-]* ; unique on the zrok account
+  # privateShareToken: nginx-priv   # private only; omit = random private token
+  insecure: false                   # skip TLS verify to upstream
+  closed: false                     # closed permission mode
+  accessGrants: []                  # emails allowed when closed: true
+  # basicAuthSecretRef: { name: my-basic-auth }  # Secret keys: username, password
+  # oauth:
+  #   provider: google              # google | github
+  #   emailDomains: ["example.com"]
+  #   refreshInterval: 24h          # Go duration
+  reclaimPolicy: Delete             # Delete | Retain  (delete reserved name on CR delete?)
+status:
+  assignedURL: https://ko-default-nginx.share.zrok.io
+  frontendEndpoints: []
+  shareToken: ""
+  reservation: reserved             # ephemeral | reserved | private
+  conditions:                       # Ready | EnvironmentReady | ShareCreated | NameReady
+    - type: Ready
+      reason: Ready                 # Ready | NameConflict | WaitingForEnvironment | InvalidSpec | …
 ```
 
-Reserved names use the v2 namespaces/names model (not v1 `reserve`). See [migrate v1→v2](https://netfoundry.io/docs/zrok/how-tos/migration/migrate-v1-to-v2/).
+`nameSelection` + `shareMode=private` is rejected (CEL + reconciler). `privateShareToken` + `shareMode=public` likewise.
 
 ### ZrokAccess
 
-Private-share consumer via the agent.
+Private-share consumer via the agent (bind a local port to someone else's private share token).
+
+```yaml
+apiVersion: zrok.k8s.zrok.io/v1alpha1
+kind: ZrokAccess
+metadata:
+  name: to-nginx
+spec:
+  environmentRef: { name: default } # required; same namespace
+  shareToken: "<private share token>"  # required
+  bindAddress: "0.0.0.0:0"          # default; agent-local listen addr
+status:
+  frontendEndpoint: ""              # bound address when known
+  accessToken: ""                   # agent frontend token
+  conditions:
+    - type: Ready                   # True | False | Unknown
+      reason: Ready                 # Ready | WaitingForEnvironment | AccessError | …
+```
 
 ## Helm
 
@@ -100,8 +174,10 @@ The controller creates an owned `ZrokShare` and mirrors `status.assignedURL` ont
 
 ## Metrics
 
-- `zrok_share_ready`
+- `zrok_share_ready{namespace,name}`
+- `zrok_environment_ready{namespace,name}`
 - `zrok_share_reconcile_errors`
-- `zrok_environment_ready`
+- `zrok_environment_reconcile_errors`
+- `zrok_access_reconcile_errors`
 
 Enable Prometheus `ServiceMonitor` via Helm `metrics.serviceMonitor.enabled=true`.

@@ -55,6 +55,16 @@ func IsTrue(conditions []metav1.Condition, conditionType string) bool {
 	return false
 }
 
+// Reason returns the condition reason, or empty if the type is absent.
+func Reason(conditions []metav1.Condition, conditionType string) string {
+	for _, c := range conditions {
+		if c.Type == conditionType {
+			return c.Reason
+		}
+	}
+	return ""
+}
+
 func truncate(s string, n int) string {
 	if len(s) <= n {
 		return s

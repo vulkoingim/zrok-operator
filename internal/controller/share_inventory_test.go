@@ -92,3 +92,35 @@ func TestClassifyShare_AdoptAgent(t *testing.T) {
 		t.Fatal("agent target should match")
 	}
 }
+
+func TestAgentTargetOK(t *testing.T) {
+	t.Parallel()
+	if agentTargetOK(&agentGrpc.ShareDetail{BackendEndpoint: ""}, "http://nginx:80") {
+		t.Fatal("empty backend must not count as a match")
+	}
+	if !agentTargetOK(&agentGrpc.ShareDetail{BackendEndpoint: "http://nginx:80"}, "http://nginx") {
+		t.Fatal("default port should match")
+	}
+	if agentTargetOK(&agentGrpc.ShareDetail{BackendEndpoint: "http://other:80"}, "http://nginx:80") {
+		t.Fatal("different target")
+	}
+}
+
+func TestOtherShareWithFrontendName(t *testing.T) {
+	t.Parallel()
+	self := testShare("a", "http://a", "demo", "")
+	other := testShare("b", "http://b", "demo", "")
+	if got := otherShareWithFrontendName(self, []zrokv1alpha1.ZrokShare{*self, *other}); got == nil || got.Name != "b" {
+		t.Fatalf("got %+v", got)
+	}
+	deleting := testShare("b", "http://b", "demo", "")
+	now := metav1.Now()
+	deleting.DeletionTimestamp = &now
+	if got := otherShareWithFrontendName(self, []zrokv1alpha1.ZrokShare{*self, *deleting}); got != nil {
+		t.Fatalf("deleting peer should be ignored: %+v", got)
+	}
+	unique := testShare("b", "http://b", "other", "")
+	if got := otherShareWithFrontendName(self, []zrokv1alpha1.ZrokShare{*self, *unique}); got != nil {
+		t.Fatalf("different name: %+v", got)
+	}
+}
