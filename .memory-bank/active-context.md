@@ -13,6 +13,8 @@
 
 ## Recent Progress
 
+- **CI speed/correctness** (2026-08-12): lint → setup-go@v6 + golangci-lint-action@v9; test/e2e → mise-action@v4 (pinned 2026.8.2, scoped install_args) + Go/envtest caches; concurrency + main/PR-only triggers; tidy gate. See [build-deployment.md](build-deployment.md).
+
 - **Prom-op pattern gaps** (2026-08-12): Helm Ingress RBAC; Access Env watch + field indexes + heal; `status.PatchStatus` + condition equality short-circuit; Ingress class predicate; CEL on ZrokShare; labeled Ready gauges + Env/Access error counters; transition-only Ready events. Docs: [access-controller.md](components/access-controller.md), [system-architecture.md](system-architecture.md).
 
 - **Memory bank bootstrap** (2026-08-12): Created `AGENTS.md`, `.memory-bank/` Tier 1–3, reference docs, ADRs. Index: [README.md](README.md).

@@ -2,20 +2,66 @@ name: Tests
 
 on:
   push:
+    branches: [main]
   pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
-    name: Run on Ubuntu
+    name: Test
     runs-on: ubuntu-latest
     steps:
-      - name: Clone the code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup mise
-        uses: jdx/mise-action@v2
+        uses: jdx/mise-action@v4
+        with:
+          version: 2026.8.2
+          cache: true
+          # Only tools needed by `mise run test` (gen + envtest + gotestsum).
+          install_args: >-
+            go
+            go:gotest.tools/gotestsum
+            go:github.com/vektra/mockery/v3
+            go:sigs.k8s.io/controller-tools/cmd/controller-gen
+            go:sigs.k8s.io/controller-runtime/tools/setup-envtest
 
-      - name: Running Tests
+      - name: Cache Go modules and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          restore-keys: |
+            go-${{ runner.os }}-
+
+      - name: Cache envtest assets
+        uses: actions/cache@v4
+        with:
+          path: bin/k8s
+          key: envtest-${{ runner.os }}-1.36-${{ hashFiles('mise.toml') }}
+          restore-keys: |
+            envtest-${{ runner.os }}-1.36-
+
+      - name: Download modules
+        run: go mod download
+
+      - name: Verify modules
+        run: go mod verify
+
+      - name: Check go.mod tidy
         run: |
           go mod tidy
-          mise run test
+          git diff --exit-code go.mod go.sum
+
+      - name: Test
+        env:
+          GOFLAGS: -mod=readonly
+        run: mise run test

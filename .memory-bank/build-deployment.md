@@ -1,6 +1,6 @@
 # Build & Deployment
 
-> **Last Updated:** 2026-08-12
+> **Last Updated:** 2026-08-12 (CI caching)
 
 ## Artifacts
 
@@ -28,12 +28,16 @@ Prefer pre-created enable-token Secret over chart `--set credentials.enableToken
 
 ## CI workflows
 
-| Workflow | Trigger | Action |
+Triggers: `push` to `main` + all `pull_request`. Concurrency cancels superseded runs.
+
+| Workflow | Action | Caching |
 |---|---|---|
-| `test.yml` | PR/push | `mise run test` (via mise-action) |
-| `lint.yml` | PR/push | golangci-lint |
-| `test-e2e.yml` | PR/push | Kind + `mise run test-e2e` (optional `ZROK2_ENABLE_TOKEN` secret) |
+| `lint.yml` | `setup-go@v6` + `golangci-lint-action@v9` (v2.12) | Go mod/build (setup-go) + golangci analysis cache |
+| `test.yml` | `mise-action@v4` → `mise run test` (scoped `install_args`) | mise tools + `~/go/pkg/mod` + `~/.cache/go-build` + `bin/k8s` (envtest) |
+| `test-e2e.yml` | `mise-action@v4` → kind-up + `mise run test-e2e` | mise tools + Go mod/build; optional `ZROK2_ENABLE_TOKEN` |
 | `release.yml` | tag `v*` | multi-arch GHCR + helm package |
+
+CI also runs `go mod verify` + `go mod tidy` + `git diff --exit-code` (no silent tidy).
 
 ## RBAC highlights
 
