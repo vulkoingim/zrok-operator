@@ -9,6 +9,7 @@ import (
 
 	"github.com/openziti/zrok/v2/agent/agentGrpc"
 	mock "github.com/stretchr/testify/mock"
+	"github.com/vulkoingim/zrok-operator/internal/zrokclient"
 )
 
 // NewRESTClient creates a new instance of RESTClient. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -347,56 +348,49 @@ func (_c *RESTClient_Enable_Call) RunAndReturn(run func(ctx context.Context, api
 	return _c
 }
 
-// FindShareByFrontendName provides a mock function for the type RESTClient
-func (_mock *RESTClient) FindShareByFrontendName(ctx context.Context, apiEndpoint string, accountToken string, envZID string, name string) (string, []string, error) {
-	ret := _mock.Called(ctx, apiEndpoint, accountToken, envZID, name)
+// ListShares provides a mock function for the type RESTClient
+func (_mock *RESTClient) ListShares(ctx context.Context, apiEndpoint string, accountToken string, envZID string) ([]zrokclient.RemoteShare, error) {
+	ret := _mock.Called(ctx, apiEndpoint, accountToken, envZID)
 
 	if len(ret) == 0 {
-		panic("no return value specified for FindShareByFrontendName")
+		panic("no return value specified for ListShares")
 	}
 
-	var r0 string
-	var r1 []string
-	var r2 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, string) (string, []string, error)); ok {
-		return returnFunc(ctx, apiEndpoint, accountToken, envZID, name)
+	var r0 []zrokclient.RemoteShare
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string) ([]zrokclient.RemoteShare, error)); ok {
+		return returnFunc(ctx, apiEndpoint, accountToken, envZID)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, string) string); ok {
-		r0 = returnFunc(ctx, apiEndpoint, accountToken, envZID, name)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string) []zrokclient.RemoteShare); ok {
+		r0 = returnFunc(ctx, apiEndpoint, accountToken, envZID)
 	} else {
-		r0 = ret.Get(0).(string)
-	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, string, string) []string); ok {
-		r1 = returnFunc(ctx, apiEndpoint, accountToken, envZID, name)
-	} else {
-		if ret.Get(1) != nil {
-			r1 = ret.Get(1).([]string)
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]zrokclient.RemoteShare)
 		}
 	}
-	if returnFunc, ok := ret.Get(2).(func(context.Context, string, string, string, string) error); ok {
-		r2 = returnFunc(ctx, apiEndpoint, accountToken, envZID, name)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, string) error); ok {
+		r1 = returnFunc(ctx, apiEndpoint, accountToken, envZID)
 	} else {
-		r2 = ret.Error(2)
+		r1 = ret.Error(1)
 	}
-	return r0, r1, r2
+	return r0, r1
 }
 
-// RESTClient_FindShareByFrontendName_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'FindShareByFrontendName'
-type RESTClient_FindShareByFrontendName_Call struct {
+// RESTClient_ListShares_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListShares'
+type RESTClient_ListShares_Call struct {
 	*mock.Call
 }
 
-// FindShareByFrontendName is a helper method to define mock.On call
+// ListShares is a helper method to define mock.On call
 //   - ctx context.Context
 //   - apiEndpoint string
 //   - accountToken string
 //   - envZID string
-//   - name string
-func (_e *RESTClient_Expecter) FindShareByFrontendName(ctx any, apiEndpoint any, accountToken any, envZID any, name any) *RESTClient_FindShareByFrontendName_Call {
-	return &RESTClient_FindShareByFrontendName_Call{Call: _e.mock.On("FindShareByFrontendName", ctx, apiEndpoint, accountToken, envZID, name)}
+func (_e *RESTClient_Expecter) ListShares(ctx any, apiEndpoint any, accountToken any, envZID any) *RESTClient_ListShares_Call {
+	return &RESTClient_ListShares_Call{Call: _e.mock.On("ListShares", ctx, apiEndpoint, accountToken, envZID)}
 }
 
-func (_c *RESTClient_FindShareByFrontendName_Call) Run(run func(ctx context.Context, apiEndpoint string, accountToken string, envZID string, name string)) *RESTClient_FindShareByFrontendName_Call {
+func (_c *RESTClient_ListShares_Call) Run(run func(ctx context.Context, apiEndpoint string, accountToken string, envZID string)) *RESTClient_ListShares_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -414,27 +408,22 @@ func (_c *RESTClient_FindShareByFrontendName_Call) Run(run func(ctx context.Cont
 		if args[3] != nil {
 			arg3 = args[3].(string)
 		}
-		var arg4 string
-		if args[4] != nil {
-			arg4 = args[4].(string)
-		}
 		run(
 			arg0,
 			arg1,
 			arg2,
 			arg3,
-			arg4,
 		)
 	})
 	return _c
 }
 
-func (_c *RESTClient_FindShareByFrontendName_Call) Return(shareToken string, endpoints []string, err error) *RESTClient_FindShareByFrontendName_Call {
-	_c.Call.Return(shareToken, endpoints, err)
+func (_c *RESTClient_ListShares_Call) Return(remoteShares []zrokclient.RemoteShare, err error) *RESTClient_ListShares_Call {
+	_c.Call.Return(remoteShares, err)
 	return _c
 }
 
-func (_c *RESTClient_FindShareByFrontendName_Call) RunAndReturn(run func(ctx context.Context, apiEndpoint string, accountToken string, envZID string, name string) (string, []string, error)) *RESTClient_FindShareByFrontendName_Call {
+func (_c *RESTClient_ListShares_Call) RunAndReturn(run func(ctx context.Context, apiEndpoint string, accountToken string, envZID string) ([]zrokclient.RemoteShare, error)) *RESTClient_ListShares_Call {
 	_c.Call.Return(run)
 	return _c
 }

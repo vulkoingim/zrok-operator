@@ -3,7 +3,7 @@
 - **Location**: `internal/agent/` (`resources.go`, `resources_test.go`)
 - **Purpose**: Pure helpers for desired PVC/Service/Deployment + naming; no reconcile loop
 - **Owner**: Environment reconciler (consumes Desired*)
-- **Last analysed**: 2026-08-12
+- **Last analysed**: 2026-08-13
 
 ## Data Flow Diagram
 
@@ -41,7 +41,8 @@ Keep agent pod shape consistent: non-root, seed identity once/repair, **wipe reg
 | `DeploymentName` / `ServiceName` | `{env}-agent` |
 | `IdentitySecretName` | `{env}-zrok-identity` |
 | `ManagedFrontendName` | `ko-{share.Namespace}-{share.Name}` |
-| `EnvironmentDescription` | `zrok-operator/{ns}/{name}` |
+| `EnvironmentDescription` / `EnvironmentHost` | `zrok-operator/{ns}/{name}` (Enable body; shares have no metadata API) |
+| `ShareLabels` | K8s labels on ZrokShare (`managed-by`, env, share-mode, frontend-name) |
 | `AgentDialAddr` | `{svc}.{ns}.svc:7777` |
 
 ### Constants

@@ -218,8 +218,8 @@ spec:
             - message: nameSelection is only valid with shareMode=public
               rule: '!(has(self.nameSelection) && self.shareMode == ''private'')'
             - message: privateShareToken is only valid with shareMode=private
-              rule: '!(has(self.privateShareToken) && self.privateShareToken != ”
-                && self.shareMode != ''private'')'
+              rule: '!(has(self.privateShareToken) && size(self.privateShareToken)
+                > 0 && self.shareMode != ''private'')'
           status:
             description: ZrokShareStatus defines the observed state of ZrokShare.
             properties:

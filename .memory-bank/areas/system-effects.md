@@ -1,6 +1,6 @@
 # System Effects & Data Strategy
 
-> **Last Updated:** 2026-08-12
+> **Last Updated:** 2026-08-13
 
 ## Data Flywheel
 
@@ -25,7 +25,7 @@ Agent restarts force re-create of shares → reserved names + operator heal clos
 | Env reconciler | Enable + agent | Identity Secret + PVC | Shares/Access | Critical |
 | Agent start | Run zrok2 | Wipes registry | Prevents 409 vs operator | Critical |
 | Share reconciler | SharePublic | Remote name reservation + live share | Users / Ingress | Critical |
-| Share heal | Repair drift | REST Unshare orphans | Clears 409 loops | High |
+| Share heal | Repair drift | REST Unshare **our** token (target match) | Clears 409 without stealing foreign names | High |
 | Ingress reconciler | Translate Ingress | Creates ZrokShare | Ingress users | Medium |
 | Env delete | Disable | Destroys remote env | Cleanup | High (blocked by Shares) |
 
@@ -53,6 +53,6 @@ Agent restarts force re-create of shares → reserved names + operator heal clos
 
 | Component | Reusable For | API Surface |
 |---|---|---|
-| `zrokclient.RESTClient` | Any controller needing controller API | Enable/Disable/Names/Unshare/Find |
+| `zrokclient.RESTClient` | Any controller needing controller API | Enable/Disable/Names/Unshare/ListShares |
 | `zrokclient.AgentClient` | Share/Access/Env Ready | Status/Share*/Release*/Access* |
 | `internal/agent` naming | Samples, Ingress defaults | `ManagedFrontendName`, `AgentDialAddr` |

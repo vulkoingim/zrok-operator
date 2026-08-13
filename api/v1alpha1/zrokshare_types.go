@@ -8,7 +8,7 @@ import (
 // ZrokShareSpec defines the desired state of ZrokShare.
 //
 // +kubebuilder:validation:XValidation:rule="!(has(self.nameSelection) && self.shareMode == 'private')",message="nameSelection is only valid with shareMode=public"
-// +kubebuilder:validation:XValidation:rule="!(has(self.privateShareToken) && self.privateShareToken != ” && self.shareMode != 'private')",message="privateShareToken is only valid with shareMode=private"
+// +kubebuilder:validation:XValidation:rule="!(has(self.privateShareToken) && size(self.privateShareToken) > 0 && self.shareMode != 'private')",message="privateShareToken is only valid with shareMode=private"
 type ZrokShareSpec struct {
 	// EnvironmentRef references a ZrokEnvironment in the same namespace.
 	// +kubebuilder:validation:Required

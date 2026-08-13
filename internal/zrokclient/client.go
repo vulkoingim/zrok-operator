@@ -47,7 +47,7 @@ type RESTClient interface {
 	UpdateShareName(ctx context.Context, apiEndpoint, accountToken, namespaceToken, name string, reserved bool) error
 	DeleteShareName(ctx context.Context, apiEndpoint, accountToken, namespaceToken, name string) error
 	Unshare(ctx context.Context, apiEndpoint, accountToken, envZID, shareToken string) error
-	FindShareByFrontendName(ctx context.Context, apiEndpoint, accountToken, envZID, name string) (shareToken string, endpoints []string, err error)
+	ListShares(ctx context.Context, apiEndpoint, accountToken, envZID string) ([]RemoteShare, error)
 }
 
 // AgentClient talks to a zrok2 agent over native gRPC (agentGrpc).
@@ -226,49 +226,38 @@ func (c *HTTPRESTClient) Unshare(ctx context.Context, apiEndpoint, accountToken,
 	return nil
 }
 
-func (c *HTTPRESTClient) FindShareByFrontendName(ctx context.Context, apiEndpoint, accountToken, envZID, name string) (string, []string, error) {
-	if envZID == "" || name == "" {
-		return "", nil, nil
+func (c *HTTPRESTClient) ListShares(ctx context.Context, apiEndpoint, accountToken, envZID string) ([]RemoteShare, error) {
+	if envZID == "" {
+		return nil, nil
 	}
 	client, err := c.clientFor(apiEndpoint)
 	if err != nil {
-		return "", nil, err
+		return nil, err
 	}
 	auth := httptransport.APIKeyAuth("X-TOKEN", "header", accountToken)
 	params := restmeta.NewListSharesParamsWithContext(ctx)
 	params.EnvZID = &envZID
 	resp, err := client.Metadata.ListShares(params, auth)
 	if err != nil {
-		return "", nil, fmt.Errorf("list shares: %w", err)
+		return nil, fmt.Errorf("list shares: %w", err)
 	}
 	if resp.Payload == nil {
-		return "", nil, nil
+		return nil, nil
 	}
+	out := make([]RemoteShare, 0, len(resp.Payload.Shares))
 	for _, s := range resp.Payload.Shares {
 		if s == nil {
 			continue
 		}
-		for _, ep := range s.FrontendEndpoints {
-			if FrontendEndpointMatchesName(ep, name) {
-				return s.ShareToken, s.FrontendEndpoints, nil
-			}
-		}
+		out = append(out, RemoteShare{
+			Token:             s.ShareToken,
+			Target:            s.Target,
+			ShareMode:         s.ShareMode,
+			BackendMode:       s.BackendMode,
+			FrontendEndpoints: s.FrontendEndpoints,
+		})
 	}
-	return "", nil, nil
-}
-
-// FrontendEndpointMatchesName reports whether a frontend URL belongs to the reserved share name.
-func FrontendEndpointMatchesName(endpoint, name string) bool {
-	if endpoint == "" || name == "" {
-		return false
-	}
-	host := strings.ToLower(endpoint)
-	host = strings.TrimPrefix(host, "https://")
-	host = strings.TrimPrefix(host, "http://")
-	if i := strings.IndexByte(host, '/'); i >= 0 {
-		host = host[:i]
-	}
-	return strings.HasPrefix(host, strings.ToLower(name)+".")
+	return out, nil
 }
 
 // PersistEnabledEnvironment writes enable results into a local root dir (for tests / optional manager-side enable).

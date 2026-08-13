@@ -27,7 +27,7 @@ sequenceDiagram
 ## How It Works
 
 1. Watch Ingress; process only `ingressClassName == "zrok"`
-2. Build desired `ZrokShare` (same name as Ingress) from rules/backends + annotations
+2. Build desired `ZrokShare` (same name as Ingress) from rules/backends + annotations; stamp `agent.ShareLabels`
 3. `SetControllerReference` — Owns ZrokShare
 4. When Share has `AssignedURL`, copy to Ingress status LB hostname
 

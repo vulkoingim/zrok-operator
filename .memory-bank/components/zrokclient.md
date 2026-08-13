@@ -3,7 +3,7 @@
 - **Location**: `internal/zrokclient/` (`client.go`, `agent_grpc.go`, `mock/`)
 - **Purpose**: Typed clients for zrok controller REST API and zrok2 agent gRPC
 - **Owner**: Environment, Share, Access reconcilers
-- **Last analysed**: 2026-08-12
+- **Last analysed**: 2026-08-13
 
 ## Data Flow Diagram
 
@@ -31,7 +31,7 @@ type RESTClient interface {
   UpdateShareName(ctx, apiEndpoint, accountToken, namespaceToken, name string, reserved bool) error
   DeleteShareName(ctx, apiEndpoint, accountToken, namespaceToken, name string) error
   Unshare(ctx, apiEndpoint, accountToken, envZID, shareToken string) error
-  FindShareByFrontendName(ctx, apiEndpoint, accountToken, envZID, name string) (shareToken string, endpoints []string, err error)
+  ListShares(ctx, apiEndpoint, accountToken, envZID string) ([]RemoteShare, error)
 }
 
 type AgentClient interface {
@@ -44,7 +44,7 @@ type AgentClient interface {
 }
 ```
 
-Helpers: `NewDefaultClients`, `FrontendEndpointMatchesName`, `PersistEnabledEnvironment` (test helper).
+Helpers: `NewDefaultClients`, `RemoteShare`, `TargetsEqual`, `FindByFrontendName` / `FindByToken`, `FrontendEndpointMatchesName`, `PersistEnabledEnvironment` (test helper).
 
 ## Protocol details
 
@@ -74,7 +74,7 @@ Callers interpret SharePublic errors (409) at controller layer. REST methods wra
 |---|---|
 | Dial fail :7777 | Agent/socat not Ready; wrong Service DNS |
 | 401/403 REST | Wrong enable/account token in Secret |
-| FindShare miss | Endpoint string format ≠ name matcher |
+| FindShare miss | Endpoint string format ≠ name matcher; use ListShares + Target
 
 ## References
 

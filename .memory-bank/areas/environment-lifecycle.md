@@ -1,6 +1,6 @@
 # Area: Environment Lifecycle
 
-> **Last Updated:** 2026-08-12
+> **Last Updated:** 2026-08-13
 
 ## Overview
 
@@ -33,7 +33,7 @@ sequenceDiagram
 ## How It Works
 
 1. **Finalizer** `zrok.k8s.zrok.io/environment` on create path
-2. **ensureEnabled** — if identity Secret absent: REST `Enable` with `host=k8s/{ns}/{name}`, `description=zrok-operator/{ns}/{name}` (`agent.EnvironmentDescription`); persist Secret keys `envZID`, `environment.json`, `identity`, `metadata.json`, `config.json`. Race on Create → Disable orphan envZID
+    2. **ensureEnabled** — if identity Secret absent: REST `Enable` with `host` and `description` both `zrok-operator/{ns}/{name}` (`agent.EnvironmentHost` / `EnvironmentDescription`); persist Secret keys `envZID`, `environment.json`, `identity`, `metadata.json`, `config.json`. Race on Create → Disable orphan envZID
 3. **Ensure children** — PVC `{env}-zrok-home`, Service `{env}-agent`, Deployment `{env}-agent` via `internal/agent` Desired* helpers; `SetControllerReference`
 4. **Ready** — Deploy ReadyReplicas≥1 **and** Agent `Status` succeeds
 5. **Delete** — if any Share lists this Env → requeue / event `SharesExist`; else REST `Disable` unless `reclaimPolicy=Retain`; delete Deploy/Service/Secret/(PVC if Delete)

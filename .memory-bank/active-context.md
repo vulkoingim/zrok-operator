@@ -4,6 +4,7 @@
 
 | Focus Area | Description | Status |
 |------------|-------------|--------|
+| Share lifecycle / ownership | Three-way inventory; Unshare only on target match; NameConflict | ✅ 2026-08-13 |
 | Prom-op controller alignment | Helm Ingress RBAC, Access Env watch+index, status Patch, CEL, metrics, predicates | ✅ 2026-08-12 |
 | Memory bank bootstrap | Full Tier 1–3 + AGENTS.md from BLUEPRINT | ✅ 2026-08-12 |
 | Share lifecycle harden | Adopt / heal / Unshare orphans / reserved promote | ✅ |
@@ -12,6 +13,8 @@
 | Gateway API | `internal/gateway` placeholder | ❌ not started |
 
 ## Recent Progress
+
+- **Share ownership inventory** (2026-08-13): `ListShares` + agent Status + CR. Adopt/Unshare only if target matches `spec.upstream`. Foreign reserved name → NameConflict (no Unshare). Env Enable host+description `zrok-operator/{ns}/{name}`. K8s `ShareLabels` on ZrokShare. CEL `privateShareToken` rule uses `size()` (broken curly quotes).
 
 - **CI speed/correctness** (2026-08-12): lint → setup-go@v6 + golangci-lint-action@v9; test/e2e → mise-action@v4 (pinned 2026.8.2, scoped install_args) + Go/envtest caches; concurrency + main/PR-only triggers; tidy gate. See [build-deployment.md](build-deployment.md).
 

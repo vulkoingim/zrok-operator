@@ -1,10 +1,12 @@
 # Area: Share Lifecycle
 
-> **Last Updated:** 2026-08-12
+> **Last Updated:** 2026-08-13
 
 ## Overview
 
-Reconciles `ZrokShare` against a Ready Environment’s agent and the remote controller: reserve/promote frontend names, create public/private shares, adopt or heal on 409/drift, and delete via agent Release + REST Unshare + optional DeleteShareName.
+Reconciles `ZrokShare` against a Ready Environment’s agent and the remote controller: reserve/promote frontend names, create public/private shares, adopt or heal **only when the remote/agent target matches `spec.upstream`**, and delete via agent Release + REST Unshare + optional DeleteShareName.
+
+zrok shares have **no description/labels API**. Identity is reserved name + env description + upstream URL. Kubernetes labels are stamped on the CR (`agent.ShareLabels`).
 
 ## Architecture Diagram
 
@@ -14,19 +16,20 @@ flowchart TD
   envReady -->|no| wait[Requeue]
   envReady -->|yes| validate{Valid mode combo?}
   validate -->|no| fail[Ready=False]
-  validate -->|yes| mode{Mode}
-  mode -->|public+nameSelection| reserve[CreateShareName + UpdateShareName reserved=true]
-  mode -->|public ephemeral| pub[SharePublic]
-  mode -->|private| priv[SharePrivate]
-  reserve --> pub
-  pub --> conflict{409?}
-  conflict -->|yes| adopt[Adopt active agent share OR Unshare orphan]
-  conflict -->|no| status[Write ShareToken / URL / Reservation]
-  priv --> status
-  adopt --> status
-  status --> ready[Ready / requeue 2m]
-  ready --> heal{Token missing/inactive in agent?}
-  heal -->|yes| clear[Release + Unshare + clear status + recreate]
+  validate -->|yes| inv[ListShares + agent Status]
+  inv --> cls{Classify}
+  cls -->|name held, different target, not our token| conflict[Ready=False NameConflict — do not Unshare]
+  cls -->|agent active + target match| ready[Adopt / Ready]
+  cls -->|ours remotely, agent miss| rebind[Unshare our token]
+  cls -->|missing| reserve[CreateShareName + reserved=true]
+  rebind --> reserve
+  reserve --> create[SharePublic / SharePrivate]
+  create --> conflict409{409?}
+  conflict409 -->|ours| rebind
+  conflict409 -->|foreign| conflict
+  create --> status[Write ShareToken / URL / Reservation]
+  ready --> status
+  status --> poll[Ready / requeue 2m]
 ```
 
 ## How It Works
@@ -41,48 +44,55 @@ flowchart TD
 
 Invalid: `nameSelection` with private; `privateShareToken` with public.
 
+### Inventory (every reconcile)
+
+`REST.ListShares(envZID)` + `Agent.Status`. Match by status token, then reserved frontend name, then private token. Compare `ShareSummary.Target` / agent `BackendEndpoint` to `spec.upstream` (`zrokclient.TargetsEqual` — trim slash, default :80/:443).
+
 ### Create / adopt
 
 - Prefer reserved name convention `ko-<k8s-ns>-<share-name>` (`agent.ManagedFrontendName`)
-- If status token empty + reserved name: look up **active** agent Status share by frontend name
-- SharePublic 409: adopt active agent share; else `FindShareByFrontendName` + `Unshare` remote holder + requeue ~2s
+- Adopt **active** agent share only if frontend name matches **and** backend target matches
+- Name held remotely, **same target**, agent empty → Unshare **our** token (reserved name stays) → SharePublic (registry-wipe heal)
+- Name held remotely, **different target**, CR does not own that token → `NameConflict`, **never Unshare**
+- SharePublic 409: re-inventory; same rules (adopt ours / rebind ours / NameConflict)
 
 ### Heal
 
-If status token missing or inactive in agent: ReleaseShare (best effort) → REST Unshare → clear status fields → recreate. Persist status clear (not in-memory only).
+Spec.upstream change on **our** status token (target drifted) → Release + Unshare our token → recreate. Persist status clear.
 
 ### Delete (finalizer `zrok.k8s.zrok.io/share`)
 
-1. Resolve token: status → agent → List/Find by frontend name → parse from DeleteShareName 409 (`share '…'` regex)
-2. Agent `ReleaseShare`
-3. REST `Unshare`
-4. If reclaim Delete + reserved name: `DeleteShareName`; on 409 still attached → Unshare parsed token → requeue ~3s
-5. Remove finalizer
+1. Resolve token: status → agent name+target → ListShares name+target
+2. Unshare **only** if `isOurShareToken` (status token, or remote/agent target match)
+3. If reclaim Delete + reserved name: `DeleteShareName`; 409 still attached → Unshare only if ours, else leave name (`NameRetained` event) and drop finalizer
+4. Remove finalizer
 
-Does **not** Own K8s children. Watches Environments → map to Shares (`mapEnvToShares`).
+Does **not** Own K8s children. Watches Environments → map to Shares (`mapEnvToShares`). Stamps `agent.ShareLabels` on the CR.
 
 ## Business Rules
 
-1. CreateShareName **409/already = success**; always promote with UpdateShareName(reserved=true)
-2. Only adopt **active** agent shares
-3. Operator owns lifecycle; agent registry wiped on restart
-4. Requeue Ready every 2m for drift
-5. No share metadata API — identification via reserved name + env description + upstream URL
+1. CreateShareName **409/already = success**; always promote with UpdateShareName(reserved=true) — skipped on NameConflict
+2. Only adopt **active** agent shares whose backend matches `spec.upstream`
+3. Never Unshare a reserved-name holder with a different target unless the CR already owns that token
+4. Operator owns lifecycle; agent registry wiped on restart
+5. Requeue Ready every 2m for drift; NameConflict requeues 2m
+6. No share metadata API — identification via reserved name + env description/host `zrok-operator/{ns}/{env}` + upstream URL
 
 ## Edge Cases & Failure Modes
 
 | Scenario | Behavior |
 |---|---|
-| Remote name held, agent empty | Unshare orphan → recreate |
-| Status token set, agent restarted | Heal clears + recreates (reserved keeps name) |
-| Delete without ShareToken | Discover token before Release |
-| DeleteShareName 409 attached | Parse token, Unshare, retry |
+| Remote name held, different target | NameConflict; leave remote share |
+| Remote name held, same target, agent empty | Unshare ours + recreate |
+| Status token set, agent restarted | Heal Unshare our token + recreate (reserved keeps name) |
+| Delete without ShareToken | Discover token by name+target only |
+| DeleteShareName 409 attached to foreign share | Leave name; event NameRetained |
 | Ephemeral after agent restart | Share gone; reconcile creates new random name |
 
 ## Known Issues & Tech Debt
 
 - UI Share panel may show “Reservation: ephemeral” even when Names list has reserved=true — trust Names / API overview
-- Metrics `zrok_share_ready` not updated
+- Access gRPC has no description field; REST Access does — not used (bind address requires agent)
 
 ## Related Docs
 

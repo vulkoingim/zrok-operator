@@ -20,6 +20,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	zrokv1alpha1 "github.com/vulkoingim/zrok-operator/api/v1alpha1"
+	"github.com/vulkoingim/zrok-operator/internal/agent"
 	"github.com/vulkoingim/zrok-operator/internal/status"
 )
 
@@ -118,6 +119,12 @@ func (r *IngressReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 				Namespace: nsToken,
 				Name:      name,
 			}
+		}
+		if desired.Labels == nil {
+			desired.Labels = map[string]string{}
+		}
+		for k, v := range agent.ShareLabels(desired) {
+			desired.Labels[k] = v
 		}
 		return nil
 	})

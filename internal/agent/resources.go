@@ -46,9 +46,34 @@ func IdentitySecretName(env *zrokv1alpha1.ZrokEnvironment) string {
 	return env.Name + idSecretSuffix
 }
 
-// EnvironmentDescription is the remote zrok environment description (for UI / matching).
+// EnvironmentDescription is the remote zrok environment description (Enable body).
+// zrok shares have no description/labels — this is the only remote metadata we can set.
 func EnvironmentDescription(env *zrokv1alpha1.ZrokEnvironment) string {
 	return fmt.Sprintf("zrok-operator/%s/%s", env.Namespace, env.Name)
+}
+
+// EnvironmentHost is the remote zrok environment host field (Enable body).
+func EnvironmentHost(env *zrokv1alpha1.ZrokEnvironment) string {
+	return fmt.Sprintf("zrok-operator/%s/%s", env.Namespace, env.Name)
+}
+
+// ShareLabels are Kubernetes labels stamped on ZrokShare objects (not a zrok API).
+func ShareLabels(share *zrokv1alpha1.ZrokShare) map[string]string {
+	mode := string(share.Spec.ShareMode)
+	if mode == "" {
+		mode = string(zrokv1alpha1.ShareModePublic)
+	}
+	labels := map[string]string{
+		"app.kubernetes.io/name":       "zrok-share",
+		"app.kubernetes.io/instance":   share.Name,
+		"app.kubernetes.io/managed-by": "zrok-operator",
+		"zrok.k8s.zrok.io/environment": share.Spec.EnvironmentRef.Name,
+		"zrok.k8s.zrok.io/share-mode":  mode,
+	}
+	if share.Spec.NameSelection != nil && share.Spec.NameSelection.Name != "" {
+		labels["zrok.k8s.zrok.io/frontend-name"] = share.Spec.NameSelection.Name
+	}
+	return labels
 }
 
 // ManagedFrontendName is the recommended reserved-name convention for operator-managed

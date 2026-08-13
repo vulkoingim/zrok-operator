@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	zrokv1alpha1 "github.com/vulkoingim/zrok-operator/api/v1alpha1"
@@ -42,5 +43,37 @@ func TestManagedFrontendName(t *testing.T) {
 	}
 	if got := ManagedFrontendName(share); got != "ko-default-nginx" {
 		t.Fatalf("got %s", got)
+	}
+}
+
+func TestEnvironmentHostAndDescription(t *testing.T) {
+	env := &zrokv1alpha1.ZrokEnvironment{
+		ObjectMeta: metav1.ObjectMeta{Name: "default", Namespace: "demo"},
+	}
+	if got := EnvironmentDescription(env); got != "zrok-operator/demo/default" {
+		t.Fatalf("description: %s", got)
+	}
+	if got := EnvironmentHost(env); got != "zrok-operator/demo/default" {
+		t.Fatalf("host: %s", got)
+	}
+}
+
+func TestShareLabels(t *testing.T) {
+	share := &zrokv1alpha1.ZrokShare{
+		ObjectMeta: metav1.ObjectMeta{Name: "nginx", Namespace: "default"},
+		Spec: zrokv1alpha1.ZrokShareSpec{
+			EnvironmentRef: corev1.LocalObjectReference{Name: "env"},
+			NameSelection:  &zrokv1alpha1.NameSelectionSpec{Name: "demo"},
+		},
+	}
+	got := ShareLabels(share)
+	if got["zrok.k8s.zrok.io/environment"] != "env" {
+		t.Fatalf("env label: %v", got)
+	}
+	if got["zrok.k8s.zrok.io/frontend-name"] != "demo" {
+		t.Fatalf("frontend label: %v", got)
+	}
+	if got["app.kubernetes.io/managed-by"] != "zrok-operator" {
+		t.Fatalf("managed-by: %v", got)
 	}
 }

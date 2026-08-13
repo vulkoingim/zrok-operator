@@ -287,7 +287,7 @@ func (r *ZrokEnvironmentReconciler) ensureEnabled(ctx context.Context, env *zrok
 		})
 	}
 
-	host := fmt.Sprintf("k8s/%s/%s", env.Namespace, env.Name)
+	host := agent.EnvironmentHost(env)
 	desc := agent.EnvironmentDescription(env)
 	zid, cfg, err := r.Zrok.REST.Enable(ctx, api, token, host, desc)
 	if err != nil {

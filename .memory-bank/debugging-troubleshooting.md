@@ -1,6 +1,6 @@
 # Debugging & Troubleshooting
 
-> **Last Updated:** 2026-08-12
+> **Last Updated:** 2026-08-13
 
 ## Where to look
 
@@ -19,15 +19,20 @@
 **Cause:** Stale `agent-registry.json` re-SharePublic while remote still holds name.  
 **Fix:** Ensure Deployment wipes registry; delete agent pod; operator heal Unshare orphan. See [adr/AGENT_REGISTRY_WIPE.md](../adr/AGENT_REGISTRY_WIPE.md).
 
+### Share Ready=False NameConflict
+
+**Cause:** Reserved frontend name is attached to a remote share whose `target` ≠ `spec.upstream`, and this CR does not own that token.  
+**Fix:** Pick a different `nameSelection`, or unshare the other share in the zrok UI. Operator will not steal it.
+
 ### Share Ready but empty ShareToken / retry storm
 
 **Cause:** Create appeared remotely but status not persisted; or inactive token.  
-**Fix:** Heal path should clear status + Unshare + recreate. Check share-controller status updates.
+**Fix:** Heal path should clear status + Unshare **our** token + recreate. Check share-controller status updates.
 
 ### Finalizer stuck on ZrokShare
 
 **Cause:** No ShareToken; DeleteShareName 409 still attached.  
-**Fix:** Discover token (agent Status / FindShareByFrontendName / parse 409); Release + Unshare; then DeleteShareName. Stripping finalizer is last resort and leaves orphans.
+**Fix:** Discover token (agent Status / ListShares by name+target / parse 409 if ours); Release + Unshare; then DeleteShareName. Stripping finalizer is last resort and leaves orphans. Do not Unshare a name holder whose target ≠ this CR.
 
 ### Env delete blocked
 
