@@ -33,7 +33,7 @@ jobs:
             go:sigs.k8s.io/controller-runtime/tools/setup-envtest
 
       - name: Cache Go modules and build
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cache/go-build
@@ -43,7 +43,7 @@ jobs:
             go-${{ runner.os }}-
 
       - name: Cache envtest assets
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: bin/k8s
           key: envtest-${{ runner.os }}-1.36-${{ hashFiles('mise.toml') }}

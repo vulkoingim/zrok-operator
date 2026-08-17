@@ -21,7 +21,7 @@ jobs:
 
       # setup-go owns module + build cache; golangci-lint-action owns analysis cache.
       # Skip mise here — lint only needs Go + golangci-lint, and these actions are faster.
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true

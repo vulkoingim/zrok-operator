@@ -34,7 +34,7 @@ jobs:
             go:sigs.k8s.io/controller-tools/cmd/controller-gen
 
       - name: Cache Go modules and build
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cache/go-build
