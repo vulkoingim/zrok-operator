@@ -149,15 +149,34 @@ func IsCertManagerCRDsInstalled() bool {
 	return false
 }
 
-// LoadImageToKindClusterWithName loads a local docker image to the kind cluster
+// LoadImageToKindClusterWithName loads a local docker image to the kind cluster.
+// Tries `kind load docker-image` first; if the daemon uses the containerd image store
+// (common on GHA), falls back to `docker save` + `kind load image-archive`.
 func LoadImageToKindClusterWithName(name string) error {
 	cluster := "kind"
 	if v, ok := os.LookupEnv("KIND_CLUSTER"); ok {
 		cluster = v
 	}
-	kindOptions := []string{"load", "docker-image", name, "--name", cluster}
-	cmd := exec.Command("kind", kindOptions...)
-	_, err := Run(cmd)
+	cmd := exec.Command("kind", "load", "docker-image", name, "--name", cluster)
+	if _, err := Run(cmd); err == nil {
+		return nil
+	}
+
+	_, _ = fmt.Fprintf(GinkgoWriter, "kind load docker-image failed; falling back to image-archive\n")
+	tar, err := os.CreateTemp("", "kind-image-*.tar")
+	if err != nil {
+		return fmt.Errorf("create temp image archive: %w", err)
+	}
+	tarPath := tar.Name()
+	_ = tar.Close()
+	defer os.Remove(tarPath) //nolint:errcheck // best-effort cleanup
+
+	save := exec.Command("docker", "save", "-o", tarPath, name)
+	if _, err := Run(save); err != nil {
+		return err
+	}
+	load := exec.Command("kind", "load", "image-archive", tarPath, "--name", cluster)
+	_, err = Run(load)
 	return err
 }
 

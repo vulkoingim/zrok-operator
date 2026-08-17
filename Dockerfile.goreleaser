@@ -1,0 +1,8 @@
+# Release image: copies the GoReleaser-built binary. Do not `go build` here.
+# Build context is a temp dir with linux/<arch>/manager (see dockers_v2).
+FROM gcr.io/distroless/static:nonroot
+ARG TARGETPLATFORM
+WORKDIR /
+COPY $TARGETPLATFORM/manager /manager
+USER 65532:65532
+ENTRYPOINT ["/manager"]

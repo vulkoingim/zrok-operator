@@ -1,6 +1,6 @@
 # Development Setup
 
-> **Last Updated:** 2026-08-12
+> **Last Updated:** 2026-08-17
 
 ## Prerequisites
 
@@ -27,7 +27,8 @@ mise run build
 
 ```bash
 mise run kind-up
-mise run kind-deploy   # or: make docker-build && kind load && make deploy
+mise run kind-deploy   # docker build --load, kind load, deploy
+# Kind needs the tag in the local docker daemon (`--load`). A GHCR push is not required.
 kubectl create secret generic zrok-credentials \
   --from-literal=enable-token="$ZROK2_ENABLE_TOKEN"
 mise run samples --secret

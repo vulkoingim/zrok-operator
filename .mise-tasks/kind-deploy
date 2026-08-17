@@ -11,7 +11,8 @@ ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
 
 echo "==> docker build $IMG"
-docker build -t "$IMG" .
+docker build --load -t "$IMG" .
+docker image inspect "$IMG" >/dev/null
 
 if ! kind get clusters 2>/dev/null | grep -qx "$NAME"; then
   echo "==> kind create cluster --name $NAME"

@@ -1,0 +1,99 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+version: 2
+
+project_name: zrok-operator
+
+before:
+  hooks:
+    - go mod tidy
+    - sh -c 'mkdir -p dist/helm charts/zrok-operator/crds && cp config/crd/bases/*.yaml charts/zrok-operator/crds/ && helm package charts/zrok-operator -d dist/helm --version {{ .Version }} --app-version {{ .Version }}'
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+builds:
+  - id: manager
+    main: ./cmd
+    binary: manager
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+
+dockers_v2:
+  - id: operator
+    ids: [manager]
+    dockerfile: Dockerfile.goreleaser
+    images:
+      - ghcr.io/vulkoingim/zrok-operator
+    tags:
+      - "{{ .Version }}"
+      - "{{ .Tag }}"
+      - "{{ if and (not .Prerelease) (not .IsNightly) }}latest{{ end }}"
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    labels:
+      org.opencontainers.image.description: "Kubernetes operator that exposes cluster Services via zrok/v2 shares"
+      org.opencontainers.image.source: "{{ .GitURL }}"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.created: "{{ .Date }}"
+      org.opencontainers.image.base.name: "{{ .BaseImage }}"
+      org.opencontainers.image.base.digest: "{{ .BaseImageDigest }}"
+    annotations:
+      org.opencontainers.image.description: "Kubernetes operator that exposes cluster Services via zrok/v2 shares"
+      org.opencontainers.image.created: "{{ .Date }}"
+      org.opencontainers.image.name: "{{ .ProjectName }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.source: "{{ .GitURL }}"
+      org.opencontainers.image.base.name: "{{ .BaseImage }}"
+      org.opencontainers.image.base.digest: "{{ .BaseImageDigest }}"
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  use: git
+  filters:
+    exclude:
+      - "^docs"
+      - "^test"
+      - "^ci"
+      - "^chore"
+      - "^style"
+      - Merge pull request
+      - Merge branch
+
+release:
+  prerelease: auto
+  extra_files:
+    - glob: dist/helm/zrok-operator-*.tgz
+  footer: |
+    ## Install
+
+    Image: `ghcr.io/vulkoingim/zrok-operator:{{ .Tag }}` (also tagged `{{ .Version }}`).
+
+    ```bash
+    helm upgrade --install zrok-operator ./zrok-operator-{{ .Version }}.tgz \
+      --namespace zrok-operator --create-namespace \
+      --set image.tag={{ .Version }}
+    ```

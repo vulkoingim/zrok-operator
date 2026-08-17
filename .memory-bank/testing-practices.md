@@ -1,6 +1,6 @@
 # Testing Practices
 
-> **Last Updated:** 2026-08-12
+> **Last Updated:** 2026-08-17
 
 ## Layers
 
@@ -8,7 +8,7 @@
 |---|---|---|
 | Unit / envtest | `internal/...` (exclude e2e) | `mise run test` |
 | Agent helpers | `internal/agent/resources_test.go` | included in `mise run test` |
-| E2E Kind | `test/e2e/` | `mise run test-e2e` (optional live token) |
+| E2E Kind | `test/e2e/` | `mise run test-e2e` (optional live token). Uses `IMG` (default `zrok-operator:dev`); mise sets `SKIP_IMAGE_BUILD=true` after `kind-load`. Needs a **local** image (`docker build --load`), not a GHCR pull. |
 
 ## Mocks (mandatory)
 
