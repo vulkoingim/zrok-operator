@@ -32,14 +32,14 @@ Triggers: `push` to `main` + all `pull_request`. Concurrency cancels superseded 
 
 | Workflow | Action | Caching |
 |---|---|---|
-| `lint.yml` | `setup-go@v7` + `golangci-lint-action@v9` (v2.12) | Go mod/build (setup-go) + golangci analysis cache |
+| `lint.yml` | `mise-action@v4` → `golangci-lint config verify` + `mise run lint` | shared mise tool cache (binary) + Go cache before mise + `~/.cache/golangci-lint` |
 | `test.yml` | `mise-action@v4` (full `[tools]`) → `mise run test` | mise tools (shared key w/ e2e) + Go cache **before** mise + `bin/k8s` |
 | `test-e2e.yml` | same mise cache → kind-up + `mise run test-e2e` | Go cache before mise; kindest/node tarball; buildx `type=gha` for docker-build |
 | `release.yml` | tag `v*` | GoReleaser (`dockers_v2` GHCR linux/amd64+arm64 + linux archives + helm tgz) |
 
 CI also runs `go mod verify` + `go mod tidy` + `git diff --exit-code` (no silent tidy).
 
-Do **not** pass `install_args` to mise-action: it hashes into the cache key (splits test vs e2e) and only saves tools installed in that step. `mise run` auto-installs the rest of `[tools]` *after* the cache is written. Job env `MISE_TASK_AUTO_INSTALL=false` stops that. Go module `actions/cache` must restore **before** mise — `go:` packages make `~/go/pkg/mod` read-only and a later tar restore dies with `File exists`.
+Do **not** pass `install_args` to mise-action: it hashes into the cache key (splits jobs) and only saves tools installed in that step. `mise run` auto-installs the rest of `[tools]` *after* the cache is written. Job env `MISE_TASK_RUN_AUTO_INSTALL=false` stops that. Go module `actions/cache` must restore **before** mise — `go:` packages make `~/go/pkg/mod` read-only and a later tar restore dies with `File exists`. `golangci-lint-action` always re-downloads the binary even when its analysis cache hits; lint uses mise for the binary.
 
 ## Cutting a release
 
