@@ -14,6 +14,8 @@
 
 ## Recent Progress
 
+- **CI caches** (2026-08-17): Go `actions/cache` before mise-action (fixes `File exists` tar restore). Full `[tools]` in mise-action so helm/kind/etc. hit the shared cache; `MISE_TASK_AUTO_INSTALL=false`. Kind node image + buildx GHA layer cache on e2e.
+
 - **GoReleaser + e2e image load** (2026-08-17): `.goreleaser.yaml` `dockers_v2` publishes linux/amd64+arm64 to GHCR; helm tgz on the GitHub Release. E2E Kind failure was `example.com/zrok-operator:v0.0.1` not in the daemon — `--load` + shared `IMG` + `SKIP_IMAGE_BUILD`, not a registry push. See [build-deployment.md](build-deployment.md).
 
 - **Share ownership inventory** (2026-08-13): `ListShares` + agent Status + CR. Adopt/Unshare only if target matches `spec.upstream`. Foreign reserved name **or another ZrokShare claiming the same name** → NameConflict (no Unshare). Empty agent backend is not a match. ListShares failure keeps Ready if the agent still serves the share. NameConflict events are transition-only.
