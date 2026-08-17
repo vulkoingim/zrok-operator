@@ -169,7 +169,7 @@ func LoadImageToKindClusterWithName(name string) error {
 	}
 	tarPath := tar.Name()
 	_ = tar.Close()
-	defer os.Remove(tarPath) //nolint:errcheck // best-effort cleanup
+	defer os.Remove(tarPath)
 
 	save := exec.Command("docker", "save", "-o", tarPath, name)
 	if _, err := Run(save); err != nil {
