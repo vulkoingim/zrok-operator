@@ -2,16 +2,18 @@
 go = "1.26"
 "go:gotest.tools/gotestsum" = "latest"
 "go:github.com/vektra/mockery/v3" = "latest"
-"go:sigs.k8s.io/controller-tools/cmd/controller-gen" = "v0.17.2"
-"go:sigs.k8s.io/controller-runtime/tools/setup-envtest" = "release-0.24"
-golangci-lint = "latest"
-kubectl = "latest"
-kind = "latest"
-helm = "latest"
+"go:sigs.k8s.io/controller-tools/cmd/controller-gen" = "latest"
+"go:sigs.k8s.io/controller-runtime/tools/setup-envtest" = "latest"
+"go:golang.org/x/vuln/cmd/govulncheck" = "latest"
+"go:golang.org/x/exp/cmd/gorelease" = "latest"
+golangci-lint = "2.12.2"
+kubectl = "1.36"
+kind = "0.32"
+helm = "4.2.4"
 kustomize = "5.5.0"
-kubebuilder = "latest"
-yq = "latest"
-kubeconform = "latest"
+kubebuilder = "4.15.0"
+yq = "4.53"
+kubeconform = "0.8.0"
 
 [vars]
 IMG = "zrok-operator:dev"
@@ -20,12 +22,11 @@ ENVTEST_K8S_VERSION = "1.36"
 # --- short tasks -----------------------------------------------------------
 
 [tasks.fmt]
-description = "go fmt"
-run = "go fmt ./..."
-
-[tasks.vet]
-description = "go vet"
-run = "go vet ./..."
+description = "go fmt/vet"
+run = """
+go fmt ./...
+go vet ./...
+"""
 
 [tasks.generate]
 description = "Generate DeepCopy methods"
@@ -35,24 +36,18 @@ run = "controller-gen object:headerFile=hack/boilerplate.go.txt paths=./..."
 description = "Generate CRDs + RBAC"
 run = "controller-gen rbac:roleName=manager-role crd webhook paths=./... output:crd:artifacts:config=config/crd/bases"
 
+[tasks.mocks]
+description = "Generate mocks"
+run = "mockery"
+
 [tasks.gen]
 description = "generate + manifests + mocks + sync Helm CRDs"
-depends = ["generate", "manifests", "gen:mocks"]
+depends = ["generate", "manifests", "mocks"]
 run = "cp config/crd/bases/*.yaml charts/zrok-operator/crds/"
-
-[tasks.build]
-description = "Build manager binary to bin/manager"
-depends = ["gen", "fmt", "vet"]
-run = "mkdir -p bin && go build -o bin/manager cmd/main.go"
-
-[tasks.run]
-description = "Run manager against current kubecontext"
-depends = ["gen"]
-run = "go run ./cmd/main.go"
 
 [tasks.test]
 description = "Unit + envtest (excludes e2e)"
-depends = ["gen", "fmt", "vet"]
+depends = ["gen", "fmt"]
 run = '''
 #!/usr/bin/env bash
 set -euo pipefail
@@ -77,18 +72,5 @@ KUBEBUILDER_ASSETS="$ASSETS" gotestsum --format standard-verbose -- \
 '''
 
 [tasks.lint]
-description = "golangci-lint"
-run = "golangci-lint run"
-
-[tasks.lint-fix]
 description = "golangci-lint --fix"
 run = "golangci-lint run --fix"
-
-[tasks.install]
-description = "Install CRDs into current cluster"
-depends = ["manifests"]
-run = "kubectl apply -f config/crd/bases"
-
-[tasks.uninstall]
-description = "Remove CRDs from current cluster"
-run = "kubectl delete -f config/crd/bases --ignore-not-found=true"

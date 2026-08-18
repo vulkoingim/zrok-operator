@@ -53,10 +53,11 @@ mise install                 # tools
 mise run gen                 # deepcopy + CRDs + mocks + sync Helm CRDs
 mise run test                # unit + envtest (excludes e2e)
 mise run lint
-mise run build               # bin/manager
-mise run kind-up && mise run kind-deploy
+mise run build               # bin/manager (stamps git describe via ldflags)
+mise run kind:up && mise run kind:deploy
 mise run test-e2e            # needs Kind; ZROK2_ENABLE_TOKEN for live share
 mise run samples --secret    # apply sample CRs
+git tag -a v0.0.1 -m v0.0.1 && git push origin v0.0.1  # GoReleaser → GHCR + GitHub Release
 ```
 
 Mocks: edit `.mockery.yml` → `mise run gen` (or `mise run gen:mocks`). **Never hand-write mocks.**
@@ -69,6 +70,7 @@ Mocks: edit `.mockery.yml` → `mise run gen` (or `mise run gen:mocks`). **Never
 |---|---|---|
 | API / CRDs | `api/v1alpha1/` | ZrokEnvironment, ZrokShare, ZrokAccess |
 | Manager | `cmd/main.go` | Registers 4 reconcilers |
+| Version stamp | `internal/build/` | ldflag Version/Date; GitRevision from runtime/debug |
 | Controllers | `internal/controller/` | Env, Share, Access, Ingress |
 | Agent resources | `internal/agent/` | Desired Deployment/PVC/Service/naming |
 | Clients | `internal/zrokclient/` | REST (controller API) + Agent gRPC |

@@ -5,6 +5,12 @@ on:
     tags:
       - "v*"
 
+env:
+  MISE_TASK_RUN_AUTO_INSTALL: "false"
+  MISE_NOT_FOUND_AUTO_INSTALL: "false"
+  MISE_EXEC_AUTO_INSTALL: "false"
+  KIND_NODE_IMAGE: kindest/node:v1.36.1
+
 permissions:
   contents: write
   packages: write
@@ -13,42 +19,55 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Setup mise
+        uses: jdx/mise-action@v4
+        with:
+          cache: true
+          cache_save: false
+
+      - uses: azure/setup-helm@v5
+
+      # COPY-only Dockerfile; QEMU not required (Go already cross-compiled the binary).
+      - uses: docker/setup-buildx-action@v4
 
       - name: Login to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract tag
-        id: meta
-        run: echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
-
-      - name: Build and push multi-arch image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ghcr.io/${{ github.repository }}:${{ steps.meta.outputs.tag }}
-            ghcr.io/${{ github.repository }}:latest
-
-      - name: Package Helm chart
+      - name: vuln and release check
         run: |
-          mkdir -p dist
-          # copy CRDs into chart for installCRDs
-          mkdir -p charts/zrok-operator/crds
-          cp config/crd/bases/*.yaml charts/zrok-operator/crds/ || true
-          helm package charts/zrok-operator -d dist
+          go mod tidy && git diff --exit-code go.mod go.sum
+          govulncheck ./...
 
-      - name: Upload release assets
-        uses: softprops/action-gh-release@v2
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v7
         with:
-          files: dist/*.tgz
-          generate_release_notes: true
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Distinct from the operator image (ghcr.io/<owner>/zrok-operator).
+      - name: Push Helm chart to GHCR
+        run: |
+          shopt -s nullglob
+          charts=(dist/helm/zrok-operator-*.tgz)
+          if [[ ${#charts[@]} -ne 1 ]]; then
+            echo "expected exactly one chart tgz under dist/helm, got: ${charts[*]-none}" >&2
+            exit 1
+          fi
+          helm push "${charts[0]}" "oci://ghcr.io/${{ github.repository_owner }}/charts"

@@ -1,6 +1,6 @@
 # Tech Context
 
-> **Last Updated:** 2026-08-12
+> **Last Updated:** 2026-08-18
 
 | Item | Value |
 |---|---|
@@ -14,8 +14,8 @@
 | Tooling | mise, controller-gen v0.17.2, mockery v3, golangci-lint, kind, helm, kustomize |
 | Envtest | K8s 1.36 assets |
 | Tests | gotestsum, Ginkgo (controller suite / e2e), testify mocks |
-| Image registry | `ghcr.io/vulkoingim/zrok-operator` |
-| Chart | `charts/zrok-operator` version 0.1.0 |
+| Image registry | `ghcr.io/vulkoingim/zrok-operator` (GoReleaser `dockers_v2`, linux/amd64+arm64) |
+| Chart | `oci://ghcr.io/vulkoingim/charts/zrok-operator` (Chart.yaml 0.0.1 is overridden at release) |
 
 ## External systems
 

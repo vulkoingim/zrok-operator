@@ -3,7 +3,7 @@
 Comprehensive documentation for zrok-operator, optimized for LLM agent consumption.
 Read this file FIRST to find what you need without exploring source code.
 
-> **Last Updated:** 2026-08-13
+> **Last Updated:** 2026-08-17
 
 ---
 
@@ -107,6 +107,7 @@ zrok-operator/
 │   ├── zrokclient/         # REST controller API + Agent gRPC
 │   ├── status/             # Condition helpers
 │   ├── metrics/            # Prometheus (partially wired)
+│   ├── build/              # Version/Date ldflags; GitRevision from runtime/debug
 │   └── gateway/            # Placeholder (future Gateway API)
 ├── config/                 # Kustomize CRDs, RBAC, samples
 ├── charts/zrok-operator/   # Helm chart

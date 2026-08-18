@@ -9,5 +9,6 @@ if kind get clusters 2>/dev/null | grep -qx "$NAME"; then
   exit 0
 fi
 
-echo "Creating Kind cluster '$NAME'"
-kind create cluster --name "$NAME"
+IMAGE="${KIND_NODE_IMAGE:-kindest/node:v1.36.1}"
+echo "Creating Kind cluster '$NAME' (image $IMAGE)"
+kind create cluster --name "$NAME" --image "$IMAGE"

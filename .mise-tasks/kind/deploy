@@ -11,7 +11,8 @@ ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
 
 echo "==> docker build $IMG"
-docker build -t "$IMG" .
+docker build --load -t "$IMG" .
+docker image inspect "$IMG" >/dev/null
 
 if ! kind get clusters 2>/dev/null | grep -qx "$NAME"; then
   echo "==> kind create cluster --name $NAME"
@@ -27,7 +28,7 @@ kustomize edit set image controller="$IMG"
 cd ../..
 kustomize build config/default | kubectl apply -f -
 
-# Same tag + IfNotPresent won't restart pods; force pick up kind-loaded digest.
+# Same tag + IfNotPresent won't restart pods; force pick up kind:loaded digest.
 kubectl -n zrok-operator-system rollout restart deploy/zrok-operator-controller-manager
 
 echo "==> wait for rollout"

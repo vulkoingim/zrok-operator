@@ -14,6 +14,16 @@
 
 ## Recent Progress
 
+- **Version embed** (2026-08-18): `internal/build` + git-describe ldflags on `mise run build` / docker-build / GoReleaser. `bin/manager -version`. No version file.
+
+- **Helm OCI** (2026-08-18): `helm push` to `oci://ghcr.io/vulkoingim/charts` after GoReleaser. Distinct from operator image path.
+
+- **Single CI workflow** (2026-08-18): `ci.yml` — Lint (writes mise cache) → Test → E2E only on merge queue / `main` / manual dispatch. See [build-deployment.md](build-deployment.md).
+
+- **CI caches** (2026-08-17): Go restore before mise. Shared mise `[tools]` cache; only `test.yml` saves mise+Go keys (lint/e2e restore-only — GHA forbids parallel save of the same key). Kind node image + buildx GHA layer cache on e2e. Lint uses mise for the golangci-lint binary.
+
+- **GoReleaser + e2e image load** (2026-08-17): `.goreleaser.yaml` `dockers_v2` publishes linux/amd64+arm64 to GHCR; helm tgz on the GitHub Release. E2E Kind failure was `example.com/zrok-operator:v0.0.1` not in the daemon — `--load` + shared `IMG` + `SKIP_IMAGE_BUILD`, not a registry push. See [build-deployment.md](build-deployment.md).
+
 - **Share ownership inventory** (2026-08-13): `ListShares` + agent Status + CR. Adopt/Unshare only if target matches `spec.upstream`. Foreign reserved name **or another ZrokShare claiming the same name** → NameConflict (no Unshare). Empty agent backend is not a match. ListShares failure keeps Ready if the agent still serves the share. NameConflict events are transition-only.
 
 - **CI speed/correctness** (2026-08-12): lint → setup-go@v6 + golangci-lint-action@v9; test/e2e → mise-action@v4 (pinned 2026.8.2, scoped install_args) + Go/envtest caches; concurrency + main/PR-only triggers; tidy gate. See [build-deployment.md](build-deployment.md).

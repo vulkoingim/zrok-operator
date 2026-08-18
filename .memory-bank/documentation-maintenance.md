@@ -28,6 +28,7 @@ How humans/agents update this memory bank. Philosophy: [BLUEPRINT.md](BLUEPRINT.
 | `internal/agent/` | `components/agent-resources.md`, `areas/environment-lifecycle.md`, ADR if policy change | High |
 | `internal/zrokclient/` | `components/zrokclient.md`, areas that call APIs | High |
 | `internal/metrics/` | `system-architecture.md` observability | Medium |
+| `internal/build/` | `build-deployment.md` (ldflag stamp) | Low |
 | `charts/`, `config/`, `.github/`, `mise.toml`, `.mise-tasks/` | `build-deployment.md`, `development-setup.md` | High |
 | `.mockery.yml`, `*_test.go`, `test/` | `testing-practices.md` | Medium |
 | `adr/` | Cross-link from related components/areas | Medium |

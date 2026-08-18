@@ -18,7 +18,7 @@ Manager talks to the agent over **gRPC**, not HTTP `/v1/agent/*`. Agent registry
 
 ```bash
 mise install
-mise run kind-deploy
+mise run kind:deploy
 
 # Credentials (zrok.io or self-hosted enable token)
 kubectl create secret generic zrok-credentials \
@@ -136,6 +136,12 @@ status:
 ## Helm
 
 ```bash
+# Released chart (tag vX.Y.Z → chart version X.Y.Z, image :X.Y.Z)
+helm upgrade --install zrok-operator oci://ghcr.io/vulkoingim/charts/zrok-operator \
+  --version 0.0.1 \
+  -n zrok-operator --create-namespace
+
+# From this repo (dev)
 helm upgrade --install zrok-operator ./charts/zrok-operator \
   -n zrok-operator --create-namespace \
   --set image.repository=zrok-operator \
@@ -152,7 +158,7 @@ mise tasks                   # list
 mise run gen                 # deepcopy + CRDs + helm crds/
 mise run test                # unit + envtest via gotestsum
 mise run build               # bin/manager
-mise run kind-up && mise run deploy
+mise run kind:up && mise run deploy
 mise run test-e2e            # Kind e2e; set ZROK2_ENABLE_TOKEN for live share
 mise run samples --secret    # apply sample CRs (creates secret from env)
 ```

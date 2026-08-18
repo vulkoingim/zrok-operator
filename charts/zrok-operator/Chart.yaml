@@ -2,8 +2,9 @@ apiVersion: v2
 name: zrok-operator
 description: Kubernetes operator that exposes cluster Services via zrok/v2 shares
 type: application
-version: 0.1.0
-appVersion: "0.1.0"
+# Release overrides version/appVersion via `helm package --version/--app-version`.
+version: 0.0.1
+appVersion: "0.0.1"
 home: https://github.com/vulkoingim/zrok-operator
 keywords:
   - zrok

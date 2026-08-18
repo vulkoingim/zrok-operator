@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+#MISE description="Build manager binary to bin/manager"
+#MISE depends=["gen", "fmt", "vet"]
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=lib/version.sh
+source "$ROOT/.mise-tasks/lib/version.sh"
+
+echo "Building manager..."
+echo "  Version: ${VERSION}"
+echo "  Git revision: ${GIT_REVISION}"
+echo "  Date: ${DATE}"
+echo "  Output: bin/manager"
+
+mkdir -p "$ROOT/bin"
+(cd "$ROOT" && go build -trimpath -buildvcs=true -ldflags "$GOLDFLAGS" -o bin/manager ./cmd)
+
+echo "Build complete: bin/manager"

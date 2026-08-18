@@ -1,0 +1,179 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  merge_group:
+  workflow_dispatch:
+    inputs:
+      e2e:
+        description: Run Kind e2e
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.event.merge_group.head_sha || github.ref }}
+  # Don't cancel an in-flight merge-queue run when someone pushes the PR branch.
+  cancel-in-progress: ${{ github.event_name != 'merge_group' }}
+
+env:
+  MISE_TASK_RUN_AUTO_INSTALL: "false"
+  MISE_NOT_FOUND_AUTO_INSTALL: "false"
+  MISE_EXEC_AUTO_INSTALL: "false"
+  KIND_NODE_IMAGE: kindest/node:v1.36.1
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Restore Go modules and build
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          restore-keys: |
+            go-${{ runner.os }}-
+
+      - name: Setup mise
+        uses: jdx/mise-action@v4
+        with:
+          cache: true
+          cache_save: true
+          # First job — sole writer of the shared mise tool cache.
+
+      - name: Cache golangci-lint analysis
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/golangci-lint
+          key: golangci-${{ runner.os }}-${{ hashFiles('.golangci.yml', 'go.sum', 'mise.toml') }}-${{ hashFiles('**/*.go') }}
+          restore-keys: |
+            golangci-${{ runner.os }}-${{ hashFiles('.golangci.yml', 'go.sum', 'mise.toml') }}-
+
+      - name: Lint
+        run: |
+          go mod tidy && git diff --exit-code go.mod go.sum
+          golangci-lint config verify
+          golangci-lint run
+          govulncheck ./...
+
+  test:
+    name: Test
+    needs: [lint]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Restore Go modules and build
+        id: go-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          restore-keys: |
+            go-${{ runner.os }}-
+
+      - name: Setup mise
+        uses: jdx/mise-action@v4
+        with:
+          cache: true
+          cache_save: false
+
+      - name: Cache envtest assets
+        uses: actions/cache@v6
+        with:
+          path: bin/k8s
+          key: envtest-${{ runner.os }}-1.36-${{ hashFiles('mise.toml') }}
+          restore-keys: |
+            envtest-${{ runner.os }}-1.36-
+
+      - name: Download modules
+        run: go mod download
+
+      - name: Verify modules
+        run: go mod verify
+
+      - name: Check go.mod tidy
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum
+
+      - name: Test
+        env:
+          GOFLAGS: -mod=readonly
+        run: mise run test
+
+      - name: Save Go modules and build
+        if: steps.go-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-${{ runner.os }}-${{ hashFiles('go.sum') }}
+
+  e2e:
+    name: E2E
+    needs: [test]
+    if: >
+      github.event_name == 'merge_group' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.e2e == 'true')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Restore Go modules and build
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          restore-keys: |
+            go-${{ runner.os }}-
+
+      - name: Setup mise
+        uses: jdx/mise-action@v4
+        with:
+          cache: true
+          cache_save: false
+
+      - name: Download modules
+        run: go mod download
+
+      - name: Cache kind node image
+        id: kind-image
+        uses: actions/cache@v6
+        with:
+          path: /tmp/kindest-node.tar
+          key: kindest-node-${{ runner.os }}-${{ env.KIND_NODE_IMAGE }}
+
+      - name: Load kind node image
+        if: steps.kind-image.outputs.cache-hit == 'true'
+        run: docker load -i /tmp/kindest-node.tar
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Create kind cluster
+        run: mise run kind:up
+
+      - name: Pack kind node image
+        if: steps.kind-image.outputs.cache-hit != 'true'
+        run: docker save "$KIND_NODE_IMAGE" -o /tmp/kindest-node.tar
+
+      - name: E2E
+        env:
+          GOFLAGS: -mod=readonly
+          ZROK2_ENABLE_TOKEN: ${{ secrets.ZROK2_ENABLE_TOKEN }}
+        run: mise run test-e2e

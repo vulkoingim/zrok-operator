@@ -76,11 +76,11 @@ lint-fix: ## golangci-lint --fix
 
 .PHONY: build
 build: gen fmt vet ## Build manager binary to bin/manager
-	mkdir -p bin && go build -o bin/manager cmd/main.go
+	$(TASKS)/build
 
 .PHONY: run
 run: gen ## Run manager against current kubecontext
-	go run ./cmd/main.go
+	@source "$(TASKS)/lib/version.sh" && go run -trimpath -buildvcs=true -ldflags "$$GOLDFLAGS" ./cmd
 
 .PHONY: docker-build
 docker-build: ## Build manager Docker image
@@ -108,17 +108,17 @@ deploy: ## Deploy operator via kustomize
 undeploy: ## Undeploy operator
 	$(TASKS)/undeploy
 
-.PHONY: kind-up
-kind-up: ## Create Kind cluster
-	$(TASKS)/kind-up
+.PHONY: kind:up
+kind:up: ## Create Kind cluster
+	$(TASKS)/kind:up
 
-.PHONY: kind-load
-kind-load: ## Load image into Kind (builds image first via script depends)
-	IMG="$(IMG)" $(TASKS)/kind-load
+.PHONY: kind:load
+kind:load: ## Load image into Kind (builds image first via script depends)
+	IMG="$(IMG)" $(TASKS)/kind:load
 
-.PHONY: kind-deploy
-kind-deploy: ## Build, load, and deploy to Kind
-	IMG="$(IMG)" $(TASKS)/kind-deploy
+.PHONY: kind:deploy
+kind:deploy: ## Build, load, and deploy to Kind
+	IMG="$(IMG)" $(TASKS)/kind:deploy
 
 .PHONY: samples
 samples: ## Apply sample CRs (SECRET=1 to create zrok-credentials from env)
