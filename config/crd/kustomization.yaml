@@ -5,7 +5,3 @@ resources:
 - bases/zrok.k8s.zrok.io_zrokenvironments.yaml
 - bases/zrok.k8s.zrok.io_zrokshares.yaml
 - bases/zrok.k8s.zrok.io_zrokaccesses.yaml
-# +kubebuilder:scaffold:crdkustomizeresource
-
-patches:
-# +kubebuilder:scaffold:crdkustomizewebhookpatch

@@ -12,7 +12,7 @@
 
 - Deploying zrok controller / frontend / OpenZiti
 - Multi-cluster or SaaS control plane
-- Full Gateway API support (placeholder only)
+- Full Gateway API support
 - Persisting agent local registry as source of truth
 
 ## Constraints

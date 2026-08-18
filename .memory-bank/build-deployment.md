@@ -29,6 +29,7 @@ No `version` file. Version/Date via `-ldflags -X`. GitRevision from `runtime/deb
 # Kustomize / Kind
 mise run deploy
 # or: make deploy IMG=zrok-operator:dev   # runs .mise-tasks/deploy
+# make kind-up ≡ mise run kind:up  (Make cannot use colons in target names)
 
 # Helm
 helm upgrade --install zrok-operator oci://ghcr.io/vulkoingim/charts/zrok-operator \

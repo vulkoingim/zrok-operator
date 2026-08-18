@@ -168,6 +168,7 @@ mise run samples --secret    # apply sample CRs (creates secret from env)
 
 Longer flows live under `.mise-tasks/`; short ones in `mise.toml`.
 `Makefile` runs the same recipes / file-tasks directly (does not invoke `mise run`).
+Make targets cannot use colons: `make kind-up` ≡ `mise run kind:up`.
 
 ## Ingress translation
 

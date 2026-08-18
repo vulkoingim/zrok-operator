@@ -16,7 +16,6 @@ One-line catalog. Deep dives live under `components/`.
 | zrokclient | `internal/zrokclient/` | REST + Agent gRPC | [components/zrokclient.md](components/zrokclient.md) |
 | Status helpers | `internal/status/` | SetCondition / IsTrue | — |
 | Metrics | `internal/metrics/` | Prometheus instruments | — |
-| Gateway (stub) | `internal/gateway/` | Future Gateway API | — |
 | Helm chart | `charts/zrok-operator/` | Install | [build-deployment.md](build-deployment.md) |
 
 ```mermaid

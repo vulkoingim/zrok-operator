@@ -10,9 +10,13 @@
 | Share lifecycle harden | Adopt / heal / Unshare orphans / reserved promote | ✅ |
 | Agent registry wipe | Operator owns shares; wipe on agent start | ✅ |
 | README accuracy | Still claims HTTP agent console for manager | ❌ debt |
-| Gateway API | `internal/gateway` placeholder | ❌ not started |
+| Gateway API | HTTPRoute translation | ❌ not started |
 
 ## Recent Progress
+
+- **Dead scaffold purge** (2026-08-18): no cert-manager/prometheus-operator e2e; dropped unused `config/prometheus`, `config/network-policy`, cert-manager metrics patch, samples kustomization, webhook wiring in `cmd/main.go`, unused `internal/gateway` stub. E2e is manager + `/metrics` + optional live share.
+
+- **E2E `make install` parse fail** (2026-08-18): GNU Make `.PHONY: kind:up` → `target pattern contains no '%'`. Wrappers are `kind-up` → `.mise-tasks/kind/up`. E2e Ginkgo still calls `make install`.
 
 - **Fresh env apply races** (2026-08-18): Env `isAgentReady` Get NotFound after Create → WaitingForAgent (not reconcile error). Share `UpdateShareName` 401 → NameConflict (reserved name owned by another zrok account; public names are globally unique). CreateShareName 409 is swallowed first.
 

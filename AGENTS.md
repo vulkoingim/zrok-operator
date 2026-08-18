@@ -60,6 +60,8 @@ mise run samples --secret    # apply sample CRs
 git tag -a v0.0.1 -m v0.0.1 && git push origin v0.0.1  # GoReleaser → GHCR + GitHub Release
 ```
 
+Make wrappers: `kind-up` / `kind-load` / `kind-deploy` (GNU Make cannot parse `kind:up`). E2e Ginkgo still calls `make install`.
+
 Mocks: edit `.mockery.yml` → `mise run gen` (or `mise run gen:mocks`). **Never hand-write mocks.**
 
 ---

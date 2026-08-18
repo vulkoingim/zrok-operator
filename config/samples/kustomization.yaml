@@ -1,5 +1,0 @@
-## Append samples of your project ##
-resources:
-- zrok_v1alpha1_environment_share.yaml
-- zrok_v1alpha1_access.yaml
-# +kubebuilder:scaffold:manifestskustomizesamples

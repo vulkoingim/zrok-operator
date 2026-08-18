@@ -51,4 +51,4 @@ Set `ZrokEnvironment.spec.apiEndpoint` to your controller URL. Token from ziggy 
 | Agent 409 on start | Image includes registry wipe; delete agent pod |
 | Enable fails | Token Secret key `enable-token`; API reachable |
 
-Long scripts: `.mise-tasks/`. Makefile targets still work.
+Long scripts: `.mise-tasks/`. Makefile: `make kind-up` ≡ `mise run kind:up` (Make cannot use colons in target names).

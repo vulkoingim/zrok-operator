@@ -108,8 +108,7 @@ Leader election ID: `f22d3959.k8s.zrok.io`.
 1. **Registry wipe** → ephemeral shares cannot survive agent restart; reserved names required for sticky URLs ([ADR](../adr/AGENT_REGISTRY_WIPE.md))
 2. **README stale:** claims manager uses HTTP `/v1/agent/*`; code uses **gRPC** via socat
 3. **Orphan remote shares** after crashes/manual deletes cause 409 loops until heal/Unshare
-4. Gateway API package is placeholder only (`internal/gateway/`)
-5. CEL on ZrokShare rejects `nameSelection`+private / `privateShareToken`+public at admission (reconcile still validates for old CRDs)
+4. CEL on ZrokShare rejects `nameSelection`+private / `privateShareToken`+public at admission (reconcile still validates for old CRDs)
 
 ## 10. References
 

@@ -109,7 +109,7 @@ linters:
       - linters:
           - gochecknoinits
         path: api/
-      # Scaffold main is intentionally long (metrics/webhook wiring).
+      # Scaffold main is intentionally long (metrics + controller wiring).
       - linters:
           - funlen
           - gocyclo
@@ -155,8 +155,6 @@ linters:
         path: (.+)_test\.go
     paths:
       - third_party$
-      - builtin$
-      - examples$
 formatters:
   enable:
     - gci
@@ -193,5 +191,3 @@ formatters:
     generated: lax
     paths:
       - third_party$
-      - builtin$
-      - examples$
