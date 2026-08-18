@@ -32,8 +32,8 @@ func Run(cmd *exec.Cmd) (string, error) {
 func redactCmdArgs(args []string) string {
 	out := make([]string, len(args))
 	for i, a := range args {
-		if strings.HasPrefix(a, "--from-literal=") {
-			key, _, ok := strings.Cut(strings.TrimPrefix(a, "--from-literal="), "=")
+		if after, ok := strings.CutPrefix(a, "--from-literal="); ok {
+			key, _, ok := strings.Cut(after, "=")
 			if ok {
 				out[i] = "--from-literal=" + key + "=[redacted]"
 				continue

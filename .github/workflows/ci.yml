@@ -176,4 +176,4 @@ jobs:
         env:
           GOFLAGS: -mod=readonly
           ZROK2_ENABLE_TOKEN: ${{ secrets.ZROK2_ENABLE_TOKEN }}
-        run: mise run test-e2e
+        run: mise run test:e2e

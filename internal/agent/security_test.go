@@ -70,7 +70,7 @@ func TestDesiredNetworkPolicyFromManagerNS(t *testing.T) {
 	if from.NamespaceSelector.MatchLabels[NamespaceNameLabel] != "zrok-operator-system" {
 		t.Fatalf("ns selector %+v", from.NamespaceSelector)
 	}
-	if from.PodSelector.MatchLabels["app.kubernetes.io/name"] != ManagerAppNameLabel {
+	if from.PodSelector.MatchLabels[LabelK8sName] != ManagerAppNameLabel {
 		t.Fatalf("pod selector %+v", from.PodSelector)
 	}
 }

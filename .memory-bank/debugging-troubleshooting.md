@@ -38,8 +38,10 @@
 
 ### Finalizer stuck on ZrokShare
 
-**Cause:** No ShareToken; DeleteShareName 409 still attached.  
-**Fix:** Discover token (agent Status / ListShares by name+target / parse 409 if ours); Release + Unshare; then DeleteShareName. Stripping finalizer is last resort and leaves orphans. Do not Unshare a name holder whose target ≠ this CR.
+**Cause:** No ShareToken; DeleteShareName 409 still attached; **or** DeleteShareName **401** (placeholder/wrong enable token, or another account owns the name).  
+**Fix:** 401 is NameRetained + drop finalizer (will not steal the name). 409: discover token, Unshare if ours. Empty enable-token Secret on delete skips REST and drops the finalizer.
+
+Live e2e cleanup deletes shares → env (with finalizer patch fallback) → nginx/agent orphans. Patch: `kubectl patch zrokshare <n> -p '{"metadata":{"finalizers":null}}' --type=merge`.
 
 ### Env delete blocked
 

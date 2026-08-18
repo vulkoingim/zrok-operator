@@ -48,6 +48,7 @@ Keep agent pod shape consistent: non-root, seed identity once/repair, **wipe reg
 
 ### Constants
 
+- `LabelK8sName` / `LabelK8sInstance` / `LabelK8sComponent` / `LabelK8sManagedBy` — recommended Kubernetes labels
 - `DefaultImage = docker.io/openziti/zrok2:2.0.4`
 - `DefaultSocatImage = docker.io/alpine/socat:1.8.1.3`
 - `ZrokUID = 2171`, `DefaultGRPCPort = 7777`, `AppName = zrok-agent`

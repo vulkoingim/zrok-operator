@@ -4,7 +4,7 @@
 
 | Focus Area | Description | Status |
 |------------|-------------|--------|
-| Share lifecycle / ownership | Three-way inventory; Unshare only on target match; NameConflict | ✅ 2026-08-13 |
+| Share lifecycle / ownership | Three-way inventory; nameSelection rename; NameConflict | ✅ 2026-08-18 |
 | Prom-op controller alignment | Helm Ingress RBAC, Access Env watch+index, status Patch, CEL, metrics, predicates | ✅ 2026-08-12 |
 | Memory bank bootstrap | Full Tier 1–3 + AGENTS.md from BLUEPRINT | ✅ 2026-08-12 |
 | Share lifecycle harden | Adopt / heal / Unshare orphans / reserved promote | ✅ |
@@ -14,9 +14,11 @@
 
 ## Recent Progress
 
+- **Share reserved-name rename** (2026-08-18): `spec.nameSelection.name` is the DNS label (not the FQDN). Changing it Unshares **ours**, `DeleteShareName`s the old label (unless Retain), reserves+SharePublics the new name. Adopt now requires frontend name / shareMode / backendMode / closed match; oauth/basicAuth/insecure/grants via `applied-digest`. Access `shareToken` / explicit bind rebuilds. Ingress strips `.shares.zrok.io` from Host. DeleteShareName **401** → NameRetained + drop finalizer. Live e2e drops the sample share and recreates it with a random reserved name; recreates the enable-token Secret after sample apply.
+
 - **Hardening** (2026-08-18): https+allowlist `apiEndpoint` (drop `X-TOKEN` on redirect); agent image allowlist; ClusterIP-only agent Service; localhost console; `automountServiceAccountToken: false`; unowned identity Secret deleted; Helm `networkPolicy.enabled` (default false) gates manager NP + `--agent-network-policy`; namespaced leader-election Role; metrics TokenReview RBAC + metrics Service; e2e enable token via stdin (argv redacted). `--restrict-upstream` optional.
 
-- **Dead scaffold purge** (2026-08-18): no cert-manager/prometheus-operator e2e; dropped unused `config/prometheus`, `config/network-policy`, cert-manager metrics patch, samples kustomization, webhook wiring in `cmd/main.go`, unused `internal/gateway` stub. E2e is manager + `/metrics` + optional live share.
+- **Dead scaffold purge** (2026-08-18): no cert-manager/prometheus-operator e2e; dropped unused `config/prometheus`, `config/network-policy`, cert-manager metrics patch, samples kustomization, webhook wiring in `cmd/main.go`, unused `internal/gateway` stub. E2e is manager deploy + optional live share (`ZROK2_ENABLE_TOKEN`).
 
 - **E2E `make install` parse fail** (2026-08-18): GNU Make `.PHONY: kind:up` → `target pattern contains no '%'`. Wrappers are `kind-up` → `.mise-tasks/kind/up`. E2e Ginkgo still calls `make install`.
 
@@ -53,3 +55,5 @@
 - No `/update-memory` slash command yet — process documented in [documentation-maintenance.md](documentation-maintenance.md)
 - README agent transport docs still stale
 - E2E live-share uses repo secret `ZROK2_ENABLE_TOKEN` on main / merge queue / dispatch (not PRs). Empty/missing → Skip.
+- Changing `ZrokShare`/`ZrokAccess` `environmentRef` after create does not Unshare/Release on the **old** env (new env heals; old agent may keep the share until registry wipe)
+- `spec.uniqueID` / `spec.apiEndpoint` after Enable do not re-Enable (by design)

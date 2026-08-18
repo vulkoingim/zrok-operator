@@ -43,6 +43,11 @@ const (
 	LabelEnvironment  = "zrok.k8s.zrok.io/environment"
 	LabelShareMode    = "zrok.k8s.zrok.io/share-mode"
 	LabelFrontendName = "zrok.k8s.zrok.io/frontend-name"
+
+	LabelK8sName      = "app.kubernetes.io/name"
+	LabelK8sInstance  = "app.kubernetes.io/instance"
+	LabelK8sComponent = "app.kubernetes.io/component"
+	LabelK8sManagedBy = "app.kubernetes.io/managed-by"
 )
 
 // IdentitySecretName returns the Secret that seeds agent ~/.zrok2.
@@ -76,11 +81,11 @@ func ShareLabels(share *zrokv1alpha1.ZrokShare) map[string]string {
 		mode = string(zrokv1alpha1.ShareModePublic)
 	}
 	labels := map[string]string{
-		"app.kubernetes.io/name":       "zrok-share",
-		"app.kubernetes.io/instance":   share.Name,
-		"app.kubernetes.io/managed-by": "zrok-operator",
-		LabelEnvironment:               share.Spec.EnvironmentRef.Name,
-		LabelShareMode:                 mode,
+		LabelK8sName:      "zrok-share",
+		LabelK8sInstance:  share.Name,
+		LabelK8sManagedBy: "zrok-operator",
+		LabelEnvironment:  share.Spec.EnvironmentRef.Name,
+		LabelShareMode:    mode,
 	}
 	if share.Spec.NameSelection != nil && share.Spec.NameSelection.Name != "" {
 		labels[LabelFrontendName] = share.Spec.NameSelection.Name
@@ -98,11 +103,11 @@ func ManagedFrontendName(share *zrokv1alpha1.ZrokShare) string {
 // Labels returns standard labels for agent resources owned by env.
 func Labels(env *zrokv1alpha1.ZrokEnvironment) map[string]string {
 	return map[string]string{
-		"app.kubernetes.io/name":       AppName,
-		"app.kubernetes.io/instance":   env.Name,
-		"app.kubernetes.io/component":  "agent",
-		"app.kubernetes.io/managed-by": "zrok-operator",
-		LabelEnvironment:               env.Name,
+		LabelK8sName:      AppName,
+		LabelK8sInstance:  env.Name,
+		LabelK8sComponent: "agent",
+		LabelK8sManagedBy: "zrok-operator",
+		LabelEnvironment:  env.Name,
 	}
 }
 

@@ -69,7 +69,7 @@ func ValidateAPIEndpoint(apiEndpoint string, allowedHosts []string) error {
 	if err != nil {
 		return &EndpointNotAllowedError{Endpoint: apiEndpoint, Reason: "parse failed: " + err.Error()}
 	}
-	if u.Scheme != "https" {
+	if u.Scheme != schemeHTTPS {
 		return &EndpointNotAllowedError{Endpoint: endpoint, Reason: "must use https"}
 	}
 	if u.User != nil {
@@ -120,7 +120,7 @@ func NewSecureHTTPClient() *http.Client {
 			if len(via) >= maxRedirects {
 				return fmt.Errorf("stopped after %d redirects", maxRedirects)
 			}
-			if req.URL.Scheme != "https" {
+			if req.URL.Scheme != schemeHTTPS {
 				return fmt.Errorf("refusing non-https redirect to %s", req.URL.Redacted())
 			}
 			orig := via[0].URL
@@ -141,9 +141,9 @@ func effectivePort(u *url.URL) string {
 		return p
 	}
 	switch u.Scheme {
-	case "https":
+	case schemeHTTPS:
 		return "443"
-	case "http":
+	case schemeHTTP:
 		return "80"
 	default:
 		return ""

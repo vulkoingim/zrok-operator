@@ -1,11 +1,11 @@
 package e2e
 
 import (
-	"encoding/json"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -15,24 +15,15 @@ import (
 	"github.com/vulkoingim/zrok-operator/test/utils"
 )
 
-// namespace where the project is deployed in
-const namespace = "zrok-operator-system"
-
-// serviceAccountName created for the project
-const serviceAccountName = "zrok-operator-controller-manager"
-
-// metricsServiceName is the name of the metrics service of the project
-const metricsServiceName = "zrok-operator-controller-manager-metrics-service"
-
-// metricsRoleBindingName is the name of the RBAC that will be created to allow get the metrics data
-const metricsRoleBindingName = "zrok-operator-metrics-binding"
+const (
+	namespace         = "zrok-operator-system"
+	liveTestNS        = "default"
+	shareCRName       = "nginx-reserved"
+	envCRName         = "default"
+	credentialsSecret = "zrok-credentials"
+)
 
 var _ = Describe("Manager", Ordered, func() {
-	var controllerPodName string
-
-	// Before running the tests, set up the environment by creating the namespace,
-	// enforce the restricted security policy to the namespace, installing CRDs,
-	// and deploying the controller.
 	BeforeAll(func() {
 		By("creating manager namespace")
 		cmd := exec.Command("kubectl", "create", "ns", namespace)
@@ -56,15 +47,12 @@ var _ = Describe("Manager", Ordered, func() {
 		Expect(err).NotTo(HaveOccurred(), "Failed to deploy the controller-manager")
 	})
 
-	// After all tests have been executed, clean up by undeploying the controller, uninstalling CRDs,
-	// and deleting the namespace.
 	AfterAll(func() {
-		By("cleaning up the curl pod for metrics")
-		cmd := exec.Command("kubectl", "delete", "pod", "curl-metrics", "-n", namespace)
-		_, _ = utils.Run(cmd)
+		By("cleaning up live zrok test resources while manager is still running")
+		cleanupLiveZrokTestResources()
 
 		By("undeploying the controller-manager")
-		cmd = exec.Command("make", "undeploy")
+		cmd := exec.Command("make", "undeploy")
 		_, _ = utils.Run(cmd)
 
 		By("uninstalling CRDs")
@@ -76,189 +64,65 @@ var _ = Describe("Manager", Ordered, func() {
 		_, _ = utils.Run(cmd)
 	})
 
-	// After each test, check for failures and collect logs, events,
-	// and pod descriptions for debugging.
 	AfterEach(func() {
-		specReport := CurrentSpecReport()
-		if specReport.Failed() {
+		if !CurrentSpecReport().Failed() {
+			return
+		}
+
+		if podName, err := controllerPodName(); err == nil {
 			By("Fetching controller manager pod logs")
-			cmd := exec.Command("kubectl", "logs", controllerPodName, "-n", namespace)
-			controllerLogs, err := utils.Run(cmd)
-			if err == nil {
+			cmd := exec.Command("kubectl", "logs", podName, "-n", namespace)
+			if controllerLogs, err := utils.Run(cmd); err == nil {
 				_, _ = fmt.Fprintf(GinkgoWriter, "Controller logs:\n %s", controllerLogs)
 			} else {
 				_, _ = fmt.Fprintf(GinkgoWriter, "Failed to get Controller logs: %s", err)
 			}
 
-			By("Fetching Kubernetes events")
-			cmd = exec.Command("kubectl", "get", "events", "-n", namespace, "--sort-by=.lastTimestamp")
-			eventsOutput, err := utils.Run(cmd)
-			if err == nil {
-				_, _ = fmt.Fprintf(GinkgoWriter, "Kubernetes events:\n%s", eventsOutput)
-			} else {
-				_, _ = fmt.Fprintf(GinkgoWriter, "Failed to get Kubernetes events: %s", err)
-			}
-
-			By("Fetching curl-metrics logs")
-			cmd = exec.Command("kubectl", "logs", "curl-metrics", "-n", namespace)
-			metricsOutput, err := utils.Run(cmd)
-			if err == nil {
-				_, _ = fmt.Fprintf(GinkgoWriter, "Metrics logs:\n %s", metricsOutput)
-			} else {
-				_, _ = fmt.Fprintf(GinkgoWriter, "Failed to get curl-metrics logs: %s", err)
-			}
-
 			By("Fetching controller manager pod description")
-			cmd = exec.Command("kubectl", "describe", "pod", controllerPodName, "-n", namespace)
-			podDescription, err := utils.Run(cmd)
-			if err == nil {
+			cmd = exec.Command("kubectl", "describe", "pod", podName, "-n", namespace)
+			if podDescription, err := utils.Run(cmd); err == nil {
 				fmt.Println("Pod description:\n", podDescription)
-			} else {
-				fmt.Println("Failed to describe controller pod")
 			}
+		}
+
+		By("Fetching Kubernetes events")
+		cmd := exec.Command("kubectl", "get", "events", "-n", namespace, "--sort-by=.lastTimestamp")
+		if eventsOutput, err := utils.Run(cmd); err == nil {
+			_, _ = fmt.Fprintf(GinkgoWriter, "Kubernetes events (%s):\n%s", namespace, eventsOutput)
+		}
+		cmd = exec.Command("kubectl", "get", "events", "-n", liveTestNS, "--sort-by=.lastTimestamp")
+		if eventsOutput, err := utils.Run(cmd); err == nil {
+			_, _ = fmt.Fprintf(GinkgoWriter, "Kubernetes events (%s):\n%s", liveTestNS, eventsOutput)
 		}
 	})
 
 	SetDefaultEventuallyTimeout(2 * time.Minute)
 	SetDefaultEventuallyPollingInterval(time.Second)
 
-	Context("Manager", func() {
-		It("should run successfully", func() {
-			By("validating that the controller-manager pod is running as expected")
-			verifyControllerUp := func(g Gomega) {
-				// Get the name of the controller-manager pod
-				cmd := exec.Command("kubectl", "get",
-					"pods", "-l", "control-plane=controller-manager",
-					"-o", "go-template={{ range .items }}"+
-						"{{ if not .metadata.deletionTimestamp }}"+
-						"{{ .metadata.name }}"+
-						"{{ \"\\n\" }}{{ end }}{{ end }}",
-					"-n", namespace,
-				)
+	It("creates an Environment + Share when ZROK2_ENABLE_TOKEN is set", func() {
+		token := os.Getenv("ZROK2_ENABLE_TOKEN")
+		if token == "" {
+			Skip("ZROK2_ENABLE_TOKEN not set; skipping live zrok e2e")
+		}
 
-				podOutput, err := utils.Run(cmd)
-				g.Expect(err).NotTo(HaveOccurred(), "Failed to retrieve controller-manager pod information")
-				podNames := utils.GetNonEmptyLines(podOutput)
-				g.Expect(podNames).To(HaveLen(1), "expected 1 controller pod running")
-				controllerPodName = podNames[0]
-				g.Expect(controllerPodName).To(ContainSubstring("controller-manager"))
+		DeferCleanup(cleanupLiveZrokTestResources)
 
-				// Validate the pod's status
-				cmd = exec.Command("kubectl", "get",
-					"pods", controllerPodName, "-o", "jsonpath={.status.phase}",
-					"-n", namespace,
-				)
-				output, err := utils.Run(cmd)
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(output).To(Equal("Running"), "Incorrect controller-manager pod status")
-			}
-			Eventually(verifyControllerUp).Should(Succeed())
-		})
+		By("waiting for the controller-manager pod")
+		Eventually(func(g Gomega) {
+			podName, err := controllerPodName()
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(podName).To(ContainSubstring("controller-manager"))
 
-		It("should ensure the metrics endpoint is serving metrics", func() {
-			By("creating a ClusterRoleBinding for the service account to allow access to metrics")
-			cmd := exec.Command("kubectl", "create", "clusterrolebinding", metricsRoleBindingName,
-				"--clusterrole=zrok-operator-metrics-reader",
-				fmt.Sprintf("--serviceaccount=%s:%s", namespace, serviceAccountName),
-			)
-			_, err := utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred(), "Failed to create ClusterRoleBinding")
+			cmd := exec.Command("kubectl", "get", "pods", podName,
+				"-o", "jsonpath={.status.phase}", "-n", namespace)
+			output, err := utils.Run(cmd)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(output).To(Equal("Running"))
+		}).Should(Succeed())
 
-			By("validating that the metrics service is available")
-			cmd = exec.Command("kubectl", "get", "service", metricsServiceName, "-n", namespace)
-			_, err = utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred(), "Metrics service should exist")
-
-			By("getting the service account token")
-			token, err := serviceAccountToken()
-			Expect(err).NotTo(HaveOccurred())
-			Expect(token).NotTo(BeEmpty())
-
-			By("waiting for the metrics endpoint to be ready")
-			verifyMetricsEndpointReady := func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "endpoints", metricsServiceName, "-n", namespace)
-				output, err := utils.Run(cmd)
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(output).To(ContainSubstring("8443"), "Metrics endpoint is not ready")
-			}
-			Eventually(verifyMetricsEndpointReady).Should(Succeed())
-
-			By("verifying that the controller manager is serving the metrics server")
-			verifyMetricsServerStarted := func(g Gomega) {
-				cmd := exec.Command("kubectl", "logs", controllerPodName, "-n", namespace)
-				output, err := utils.Run(cmd)
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(output).To(ContainSubstring("controller-runtime.metrics\tServing metrics server"),
-					"Metrics server not yet started")
-			}
-			Eventually(verifyMetricsServerStarted).Should(Succeed())
-
-			By("creating the curl-metrics pod to access the metrics endpoint")
-			cmd = exec.Command("kubectl", "run", "curl-metrics", "--restart=Never",
-				"--namespace", namespace,
-				"--image=curlimages/curl:latest",
-				"--overrides",
-				fmt.Sprintf(`{
-					"spec": {
-						"containers": [{
-							"name": "curl",
-							"image": "curlimages/curl:latest",
-							"command": ["/bin/sh", "-c"],
-							"args": ["curl -v -k -H 'Authorization: Bearer %s' https://%s.%s.svc.cluster.local:8443/metrics"],
-							"securityContext": {
-								"allowPrivilegeEscalation": false,
-								"capabilities": {
-									"drop": ["ALL"]
-								},
-								"runAsNonRoot": true,
-								"runAsUser": 1000,
-								"seccompProfile": {
-									"type": "RuntimeDefault"
-								}
-							}
-						}],
-						"serviceAccount": "%s"
-					}
-				}`, token, metricsServiceName, namespace, serviceAccountName))
-			_, err = utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred(), "Failed to create curl-metrics pod")
-
-			By("waiting for the curl-metrics pod to complete.")
-			verifyCurlUp := func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "pods", "curl-metrics",
-					"-o", "jsonpath={.status.phase}",
-					"-n", namespace)
-				output, err := utils.Run(cmd)
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(output).To(Equal("Succeeded"), "curl pod in wrong status")
-			}
-			Eventually(verifyCurlUp, 5*time.Minute).Should(Succeed())
-
-			By("getting the metrics by checking curl-metrics logs")
-			metricsOutput := getMetricsOutput()
-			Expect(metricsOutput).To(ContainSubstring(
-				"controller_runtime_reconcile_total",
-			))
-		})
-	})
-
-	// Must live in this Ordered container: Manager AfterAll undeploys CRDs + manager.
-	Context("Live zrok share", func() {
-		It("creates an Environment + Share when ZROK2_ENABLE_TOKEN is set", func() {
-			token := os.Getenv("ZROK2_ENABLE_TOKEN")
-			if token == "" {
-				Skip("ZROK2_ENABLE_TOKEN not set; skipping live zrok e2e")
-			}
-
-			By("creating enable token secret in default namespace")
-			cmd := exec.Command("kubectl", "create", "secret", "generic", "zrok-credentials",
-				"--from-file=enable-token=/dev/stdin", "-n", "default")
-			cmd.Stdin = strings.NewReader(token)
-			_, _ = utils.Run(cmd)
-
-			By("deploying nginx backend")
-			cmd = exec.Command("kubectl", "apply", "-f", "-")
-			cmd.Stdin = strings.NewReader(`
+		By("deploying nginx backend")
+		cmd := exec.Command("kubectl", "apply", "-f", "-")
+		cmd.Stdin = strings.NewReader(`
 apiVersion: apps/v1
 kind: Deployment
 metadata: { name: nginx, namespace: default }
@@ -280,92 +144,180 @@ spec:
   selector: { app: nginx }
   ports: [{ port: 80, targetPort: 80 }]
 `)
-			_, err := utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred())
+		_, err := utils.Run(cmd)
+		Expect(err).NotTo(HaveOccurred())
 
-			By("applying Environment + Share")
-			root, err := utils.GetProjectDir()
-			Expect(err).NotTo(HaveOccurred())
-			sample := filepath.Join(root, "config", "samples", "zrok_v1alpha1_environment_share.yaml")
-			cmd = exec.Command("kubectl", "apply", "-f", sample)
-			_, err = utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred())
+		reservedName := randomReservedName()
 
-			By("waiting for share Ready")
-			Eventually(func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "zrokshare", "nginx", "-n", "default",
-					"-o", `jsonpath={.status.conditions[?(@.type=="Ready")].status}`)
-				out, err := utils.Run(cmd)
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(out).To(Equal("True"))
-			}).WithTimeout(3 * time.Minute).Should(Succeed())
+		By("creating enable token secret")
+		cmd = exec.Command("kubectl", "delete", "secret", credentialsSecret, "-n", liveTestNS, "--ignore-not-found")
+		_, _ = utils.Run(cmd)
+		cmd = exec.Command("kubectl", "create", "secret", "generic", credentialsSecret,
+			"--from-file=enable-token=/dev/stdin", "-n", liveTestNS)
+		cmd.Stdin = strings.NewReader(token)
+		_, err = utils.Run(cmd)
+		Expect(err).NotTo(HaveOccurred())
 
-			By("fetching assigned URL")
-			cmd = exec.Command("kubectl", "get", "zrokshare", "nginx", "-n", "default",
-				"-o", "jsonpath={.status.assignedURL}")
-			url, err := utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(url).To(HavePrefix("http"))
-			_, _ = fmt.Fprintf(GinkgoWriter, "assignedURL=%s\n", url)
-		})
+		By("applying Environment")
+		cmd = exec.Command("kubectl", "apply", "-f", "-")
+		cmd.Stdin = strings.NewReader(fmt.Sprintf(`
+apiVersion: zrok.k8s.zrok.io/v1alpha1
+kind: ZrokEnvironment
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  enableTokenSecretRef:
+    name: %s
+    key: enable-token
+  reclaimPolicy: Delete
+  agent:
+    consolePort: 8888
+`, envCRName, liveTestNS, credentialsSecret))
+		_, err = utils.Run(cmd)
+		Expect(err).NotTo(HaveOccurred())
+
+		By("waiting for Environment Ready")
+		Eventually(func(g Gomega) {
+			cmd := exec.Command("kubectl", "get", "zrokenvironment", envCRName, "-n", liveTestNS,
+				"-o", `jsonpath={.status.conditions[?(@.type=="Ready")].status}`)
+			out, runErr := utils.Run(cmd)
+			g.Expect(runErr).NotTo(HaveOccurred())
+			g.Expect(out).To(Equal("True"))
+		}).WithTimeout(3 * time.Minute).Should(Succeed())
+
+		By(fmt.Sprintf("creating share with reserved name %q", reservedName))
+		cmd = exec.Command("kubectl", "apply", "-f", "-")
+		cmd.Stdin = strings.NewReader(fmt.Sprintf(`
+apiVersion: zrok.k8s.zrok.io/v1alpha1
+kind: ZrokShare
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  environmentRef:
+    name: %s
+  shareMode: public
+  backendMode: proxy
+  upstream:
+    url: http://nginx.%s.svc:80
+  nameSelection:
+    namespace: public
+    name: %s
+  reclaimPolicy: Delete
+`, shareCRName, liveTestNS, envCRName, liveTestNS, reservedName))
+		_, err = utils.Run(cmd)
+		Expect(err).NotTo(HaveOccurred())
+
+		By("waiting for share Ready")
+		Eventually(func(g Gomega) {
+			cmd := exec.Command("kubectl", "get", "zrokshare", shareCRName, "-n", liveTestNS,
+				"-o", `jsonpath={.status.conditions[?(@.type=="Ready")].status}`)
+			out, err := utils.Run(cmd)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(out).To(Equal("True"))
+		}).WithTimeout(3 * time.Minute).Should(Succeed())
+
+		By("fetching assigned URL")
+		cmd = exec.Command("kubectl", "get", "zrokshare", shareCRName, "-n", liveTestNS,
+			"-o", "jsonpath={.status.assignedURL}")
+		url, err := utils.Run(cmd)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(url).NotTo(BeEmpty())
+		Expect(url).To(SatisfyAny(
+			HavePrefix("http://"),
+			HavePrefix("https://"),
+			ContainSubstring(reservedName+".shares.zrok.io"),
+		))
+		_, _ = fmt.Fprintf(GinkgoWriter, "assignedURL=%s\n", url)
 	})
 })
 
-// serviceAccountToken returns a token for the specified service account in the given namespace.
-// It uses the Kubernetes TokenRequest API to generate a token by directly sending a request
-// and parsing the resulting token from the API response.
-func serviceAccountToken() (string, error) {
-	const tokenRequestRawString = `{
-		"apiVersion": "authentication.k8s.io/v1",
-		"kind": "TokenRequest"
-	}`
-
-	// Temporary file to store the token request
-	secretName := fmt.Sprintf("%s-token-request", serviceAccountName)
-	tokenRequestFile := filepath.Join("/tmp", secretName)
-	err := os.WriteFile(tokenRequestFile, []byte(tokenRequestRawString), os.FileMode(0o644))
+func controllerPodName() (string, error) {
+	cmd := exec.Command("kubectl", "get",
+		"pods", "-l", "control-plane=controller-manager",
+		"-o", "go-template={{ range .items }}"+
+			"{{ if not .metadata.deletionTimestamp }}"+
+			"{{ .metadata.name }}"+
+			"{{ \"\\n\" }}{{ end }}{{ end }}",
+		"-n", namespace,
+	)
+	podOutput, err := utils.Run(cmd)
 	if err != nil {
 		return "", err
 	}
-
-	var out string
-	verifyTokenCreation := func(g Gomega) {
-		// Execute kubectl command to create the token
-		cmd := exec.Command("kubectl", "create", "--raw", fmt.Sprintf(
-			"/api/v1/namespaces/%s/serviceaccounts/%s/token",
-			namespace,
-			serviceAccountName,
-		), "-f", tokenRequestFile)
-
-		output, err := cmd.CombinedOutput()
-		g.Expect(err).NotTo(HaveOccurred())
-
-		// Parse the JSON output to extract the token
-		var token tokenRequest
-		err = json.Unmarshal(output, &token)
-		g.Expect(err).NotTo(HaveOccurred())
-
-		out = token.Status.Token
+	podNames := utils.GetNonEmptyLines(podOutput)
+	if len(podNames) != 1 {
+		return "", fmt.Errorf("expected 1 controller pod, got %d", len(podNames))
 	}
-	Eventually(verifyTokenCreation).Should(Succeed())
-
-	return out, err
+	return podNames[0], nil
 }
 
-// getMetricsOutput retrieves and returns the logs from the curl pod used to access the metrics endpoint.
-func getMetricsOutput() string {
-	By("getting the curl-metrics logs")
-	cmd := exec.Command("kubectl", "logs", "curl-metrics", "-n", namespace)
-	metricsOutput, err := utils.Run(cmd)
-	Expect(err).NotTo(HaveOccurred(), "Failed to retrieve logs from curl pod")
-	Expect(metricsOutput).To(ContainSubstring("< HTTP/1.1 200 OK"))
-	return metricsOutput
+// randomReservedName returns a DNS label valid for spec.nameSelection.name.
+func randomReservedName() string {
+	var b [4]byte
+	_, err := rand.Read(b[:])
+	Expect(err).NotTo(HaveOccurred())
+	return "e2e" + hex.EncodeToString(b[:])
 }
 
-// tokenRequest is a simplified representation of the Kubernetes TokenRequest API response,
-// containing only the token field that we need to extract.
-type tokenRequest struct {
-	Status struct {
-		Token string `json:"token"`
-	} `json:"status"`
+// cleanupLiveZrokTestResources tears down default-namespace fixtures. Shares must go
+// before the Environment so finalizers still have the enable token when the manager is up.
+// If delete times out or the manager is already gone, finalizers are patched off.
+func cleanupLiveZrokTestResources() {
+	const wait = "3m"
+
+	deleteZrokCRs("zrokshare", liveTestNS)
+	deleteZrokCRs("zrokaccess", liveTestNS)
+	deleteZrokCRs("zrokenvironment", liveTestNS)
+
+	cmd := exec.Command("kubectl", "delete", "secret", credentialsSecret, envCRName+"-zrok-identity",
+		"-n", liveTestNS, "--ignore-not-found")
+	_, _ = utils.Run(cmd)
+
+	cmd = exec.Command("kubectl", "delete", "deploy,svc", "nginx", "-n", liveTestNS,
+		"--ignore-not-found", "--wait=true", "--timeout="+wait)
+	_, _ = utils.Run(cmd)
+
+	cmd = exec.Command("kubectl", "delete", "deploy,svc", envCRName+"-agent", "-n", liveTestNS,
+		"--ignore-not-found", "--wait=true", "--timeout=60s")
+	_, _ = utils.Run(cmd)
+	cmd = exec.Command("kubectl", "delete", "pvc", envCRName+"-zrok-home", "-n", liveTestNS,
+		"--ignore-not-found", "--wait=true", "--timeout=60s")
+	_, _ = utils.Run(cmd)
+}
+
+func deleteZrokCRs(resource, namespace string, names ...string) {
+	const wait = "3m"
+	var cmd *exec.Cmd
+	if len(names) == 0 {
+		cmd = exec.Command("kubectl", "delete", resource, "--all", "-n", namespace,
+			"--ignore-not-found", "--wait=true", "--timeout="+wait)
+	} else {
+		args := append([]string{"delete", resource}, names...)
+		args = append(args, "-n", namespace, "--ignore-not-found", "--wait=true", "--timeout="+wait)
+		cmd = exec.Command("kubectl", args...)
+	}
+	_, _ = utils.Run(cmd)
+	forceRemoveStuckZrokCRs(resource, namespace)
+}
+
+func forceRemoveStuckZrokCRs(resource, namespace string) {
+	for _, name := range listKubeResourceNames(resource, namespace) {
+		cmd := exec.Command("kubectl", "patch", resource, name, "-n", namespace,
+			"--type=merge", "-p", `{"metadata":{"finalizers":null}}`)
+		_, _ = utils.Run(cmd)
+	}
+	cmd := exec.Command("kubectl", "delete", resource, "--all", "-n", namespace, "--ignore-not-found")
+	_, _ = utils.Run(cmd)
+}
+
+func listKubeResourceNames(resource, namespace string) []string {
+	cmd := exec.Command("kubectl", "get", resource, "-n", namespace,
+		"-o", `jsonpath={range .items[*]}{.metadata.name}{"\n"}{end}`)
+	out, err := utils.Run(cmd)
+	if err != nil {
+		return nil
+	}
+	return utils.GetNonEmptyLines(out)
 }

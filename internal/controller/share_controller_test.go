@@ -293,5 +293,107 @@ var _ = Describe("ZrokShare Controller", func() {
 			Expect(share.Status.ShareToken).To(Equal("shr-token"))
 			Expect(status.IsTrue(share.Status.Conditions, zrokv1alpha1.ConditionReady)).To(BeTrue())
 		})
+
+		It("rebuilds when nameSelection.name changes and deletes the old reserved name", func() {
+			restMock := zrokclientmock.NewRESTClient(GinkgoT())
+			agentMock := zrokclientmock.NewAgentClient(GinkgoT())
+
+			restMock.EXPECT().
+				ListShares(mock.Anything, mock.Anything, mock.Anything, "envzid").
+				Return(nil, nil).Once()
+			restMock.EXPECT().
+				CreateShareName(mock.Anything, mock.Anything, mock.Anything, mock.Anything, "demo").
+				Return(nil).Once()
+			restMock.EXPECT().
+				UpdateShareName(mock.Anything, mock.Anything, mock.Anything, mock.Anything, "demo", true).
+				Return(nil).Once()
+			agentMock.EXPECT().
+				Status(mock.Anything, mock.Anything).
+				Return(&agentGrpc.StatusResponse{}, nil).Once()
+			agentMock.EXPECT().
+				SharePublic(mock.Anything, mock.Anything, mock.Anything).
+				Return(&agentGrpc.SharePublicResponse{
+					Token:             "shr-token",
+					FrontendEndpoints: []string{"https://demo.shares.zrok.io"},
+				}, nil).Once()
+
+			r := &ZrokShareReconciler{
+				Client:   k8sClient,
+				Scheme:   k8sClient.Scheme(),
+				Recorder: events.NewFakeRecorder(16),
+				Zrok:     &zrokclient.Clients{REST: restMock, Agent: agentMock},
+			}
+
+			_, err := r.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: shareName, Namespace: ns},
+			})
+			Expect(err).NotTo(HaveOccurred())
+			_, err = r.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: shareName, Namespace: ns},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			share := &zrokv1alpha1.ZrokShare{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: shareName, Namespace: ns}, share)).To(Succeed())
+			Expect(share.Status.AssignedURL).To(Equal("https://demo.shares.zrok.io"))
+
+			share.Spec.NameSelection.Name = "demo-new"
+			Expect(k8sClient.Update(ctx, share)).To(Succeed())
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: shareName, Namespace: ns}, share)).To(Succeed())
+
+			restMock.EXPECT().
+				ListShares(mock.Anything, mock.Anything, mock.Anything, "envzid").
+				Return([]zrokclient.RemoteShare{{
+					Token:             "shr-token",
+					Target:            "http://nginx.default.svc:80",
+					ShareMode:         "public",
+					BackendMode:       "proxy",
+					FrontendEndpoints: []string{"https://demo.shares.zrok.io"},
+				}}, nil)
+			agentMock.EXPECT().
+				Status(mock.Anything, mock.Anything).
+				Return(&agentGrpc.StatusResponse{
+					Shares: []*agentGrpc.ShareDetail{{
+						Token:            "shr-token",
+						ShareMode:        "public",
+						BackendMode:      "proxy",
+						FrontendEndpoint: []string{"https://demo.shares.zrok.io"},
+						BackendEndpoint:  "http://nginx.default.svc:80",
+						Status:           "active",
+					}},
+				}, nil).Once()
+			restMock.EXPECT().
+				CreateShareName(mock.Anything, mock.Anything, mock.Anything, mock.Anything, "demo-new").
+				Return(nil)
+			restMock.EXPECT().
+				UpdateShareName(mock.Anything, mock.Anything, mock.Anything, mock.Anything, "demo-new", true).
+				Return(nil)
+			agentMock.EXPECT().
+				ReleaseShare(mock.Anything, mock.Anything, "shr-token").
+				Return(nil)
+			restMock.EXPECT().
+				Unshare(mock.Anything, mock.Anything, mock.Anything, "envzid", "shr-token").
+				Return(nil)
+			restMock.EXPECT().
+				DeleteShareName(mock.Anything, mock.Anything, mock.Anything, mock.Anything, "demo").
+				Return(nil)
+			agentMock.EXPECT().
+				SharePublic(mock.Anything, mock.Anything, mock.Anything).
+				Return(&agentGrpc.SharePublicResponse{
+					Token:             "shr-token-2",
+					FrontendEndpoints: []string{"https://demo-new.shares.zrok.io"},
+				}, nil)
+
+			_, err = r.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: shareName, Namespace: ns},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: shareName, Namespace: ns}, share)).To(Succeed())
+			Expect(share.Status.AssignedURL).To(Equal("https://demo-new.shares.zrok.io"))
+			Expect(share.Status.ShareToken).To(Equal("shr-token-2"))
+			Expect(share.Labels["zrok.k8s.zrok.io/frontend-name"]).To(Equal("demo-new"))
+			Expect(status.IsTrue(share.Status.Conditions, zrokv1alpha1.ConditionReady)).To(BeTrue())
+		})
 	})
 })

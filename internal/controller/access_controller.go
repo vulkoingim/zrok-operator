@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/openziti/zrok/v2/agent/agentGrpc"
@@ -82,11 +83,19 @@ func (r *ZrokAccessReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		st, err := r.Zrok.Agent.Status(ctx, addr)
 		if err == nil {
 			for _, a := range st.GetAccesses() {
-				if a.GetFrontendToken() == access.Status.AccessToken && isAgentAccessActive(a) {
-					return r.markAccessReady(ctx, access, a.GetFrontendToken(), a.GetBindAddress())
+				if a.GetFrontendToken() != access.Status.AccessToken || !isAgentAccessActive(a) {
+					continue
 				}
+				if accessSpecDrifted(access, a) {
+					logger.Info("access spec drifted; rebuilding",
+						"token", access.Status.AccessToken,
+						"liveShare", a.GetToken(), "wantShare", access.Spec.ShareToken,
+						"liveBind", a.GetBindAddress(), "wantBind", access.Spec.BindAddress)
+					break
+				}
+				return r.markAccessReady(ctx, access, a.GetFrontendToken(), a.GetBindAddress())
 			}
-			logger.Info("access token missing/inactive in agent; healing", "token", access.Status.AccessToken)
+			logger.Info("access token missing/inactive/drifted in agent; healing", "token", access.Status.AccessToken)
 			_ = r.Zrok.Agent.ReleaseAccess(ctx, addr, access.Status.AccessToken)
 			if err := status.PatchStatus(ctx, r.Client, access, func() error {
 				access.Status.AccessToken = ""
@@ -169,6 +178,24 @@ func isAgentAccessActive(a *agentGrpc.AccessDetail) bool {
 	default:
 		return false
 	}
+}
+
+func accessSpecDrifted(access *zrokv1alpha1.ZrokAccess, live *agentGrpc.AccessDetail) bool {
+	if live == nil {
+		return true
+	}
+	if tok := live.GetToken(); tok != "" && tok != access.Spec.ShareToken {
+		return true
+	}
+	want := access.Spec.BindAddress
+	if want == "" {
+		want = "0.0.0.0:0"
+	}
+	if strings.HasSuffix(want, ":0") {
+		return false
+	}
+	got := live.GetBindAddress()
+	return got != "" && got != want
 }
 
 func (r *ZrokAccessReconciler) reconcileDelete(ctx context.Context, access *zrokv1alpha1.ZrokAccess) (ctrl.Result, error) {

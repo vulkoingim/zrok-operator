@@ -219,7 +219,7 @@ func (s *stringList) String() string {
 }
 
 func (s *stringList) Set(v string) error {
-	for _, p := range strings.Split(v, ",") {
+	for p := range strings.SplitSeq(v, ",") {
 		p = strings.TrimSpace(p)
 		if p != "" {
 			*s = append(*s, p)

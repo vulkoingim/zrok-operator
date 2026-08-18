@@ -36,7 +36,11 @@ import (
 	restmeta "github.com/openziti/zrok/v2/rest_client_zrok/metadata"
 )
 
-const DefaultAPIEndpoint = "https://api-v2.zrok.io"
+const (
+	DefaultAPIEndpoint = "https://api-v2.zrok.io"
+	schemeHTTPS        = "https"
+	schemeHTTP         = "http"
+)
 
 // RESTClient talks to the zrok controller API.
 type RESTClient interface {
@@ -101,7 +105,7 @@ func (c *HTTPRESTClient) clientFor(apiEndpoint string) (*zrokrest.Zrok, error) {
 	if u.Path == "" || u.Path == "/" {
 		basePath = "/api/v2"
 	}
-	transport := httptransport.NewWithClient(host, basePath, []string{"https"}, c.HTTP)
+	transport := httptransport.NewWithClient(host, basePath, []string{schemeHTTPS}, c.HTTP)
 	// zrok API consumes/produces application/zrok.v1+json (not application/json).
 	transport.Producers["application/zrok.v1+json"] = runtime.JSONProducer()
 	transport.Consumers["application/zrok.v1+json"] = runtime.JSONConsumer()
@@ -186,7 +190,9 @@ func IsUnauthorized(err error) bool {
 		return false
 	}
 	s := err.Error()
-	return strings.Contains(s, "[401]") || strings.Contains(s, "updateShareNameUnauthorized")
+	return strings.Contains(s, "[401]") ||
+		strings.Contains(s, "updateShareNameUnauthorized") ||
+		strings.Contains(s, "deleteShareNameUnauthorized")
 }
 
 func (c *HTTPRESTClient) DeleteShareName(ctx context.Context, apiEndpoint, accountToken, namespaceToken, name string) error {
