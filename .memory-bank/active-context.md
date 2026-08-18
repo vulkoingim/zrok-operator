@@ -14,7 +14,9 @@
 
 ## Recent Progress
 
-- **CI caches** (2026-08-17): Go `actions/cache` before mise-action (fixes `File exists` tar restore). Full `[tools]` in mise-action so helm/kind/golangci-lint hit the shared cache (lint no longer re-downloads the binary via golangci-lint-action). `MISE_TASK_RUN_AUTO_INSTALL=false`. Kind node image + buildx GHA layer cache on e2e.
+- **Single CI workflow** (2026-08-18): `ci.yml` — Lint (writes mise cache) → Test → E2E only on merge queue / `main` / manual dispatch. See [build-deployment.md](build-deployment.md).
+
+- **CI caches** (2026-08-17): Go restore before mise. Shared mise `[tools]` cache; only `test.yml` saves mise+Go keys (lint/e2e restore-only — GHA forbids parallel save of the same key). Kind node image + buildx GHA layer cache on e2e. Lint uses mise for the golangci-lint binary.
 
 - **GoReleaser + e2e image load** (2026-08-17): `.goreleaser.yaml` `dockers_v2` publishes linux/amd64+arm64 to GHCR; helm tgz on the GitHub Release. E2E Kind failure was `example.com/zrok-operator:v0.0.1` not in the daemon — `--load` + shared `IMG` + `SKIP_IMAGE_BUILD`, not a registry push. See [build-deployment.md](build-deployment.md).
 

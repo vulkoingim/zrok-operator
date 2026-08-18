@@ -1,6 +1,6 @@
 # Build & Deployment
 
-> **Last Updated:** 2026-08-17 (CI caches)
+> **Last Updated:** 2026-08-18 (single CI workflow)
 
 ## Artifacts
 
@@ -28,18 +28,21 @@ Prefer pre-created enable-token Secret over chart `--set credentials.enableToken
 
 ## CI workflows
 
-Triggers: `push` to `main` + all `pull_request`. Concurrency cancels superseded runs.
+One workflow: `.github/workflows/ci.yml`. `release.yml` stays on `v*` tags.
 
-| Workflow | Action | Caching |
+Triggers: `pull_request`, `push` to `main`, `merge_group` (merge queue), `workflow_dispatch`. Concurrency cancels superseded PR/branch runs, **not** merge-queue runs.
+
+| Job | When | Caching |
 |---|---|---|
-| `lint.yml` | `mise-action@v4` → `golangci-lint config verify` + `mise run lint` | shared mise tool cache (binary) + Go cache before mise + `~/.cache/golangci-lint` |
-| `test.yml` | `mise-action@v4` (full `[tools]`) → `mise run test` | mise tools (shared key w/ e2e) + Go cache **before** mise + `bin/k8s` |
-| `test-e2e.yml` | same mise cache → kind-up + `mise run test-e2e` | Go cache before mise; kindest/node tarball; buildx `type=gha` for docker-build |
-| `release.yml` | tag `v*` | GoReleaser (`dockers_v2` GHCR linux/amd64+arm64 + linux archives + helm tgz) |
+| `Lint` | always | writes shared mise tool cache; golangci analysis |
+| `Test` | `needs: [lint]` | restores mise; writes Go mod/build cache on miss; envtest `bin/k8s` |
+| `E2E` | `needs: [test]`; **not** on PRs. Runs on `merge_group`, `push` to `main`, or `workflow_dispatch` with `e2e=true` | restore mise+Go; kindest/node tarball; buildx `type=gha` |
 
-CI also runs `go mod verify` + `go mod tidy` + `git diff --exit-code` (no silent tidy).
+Do **not** pass `install_args` to mise-action (splits the cache key). `MISE_TASK_RUN_AUTO_INSTALL=false` so `mise run` does not install extra tools after the action. Go restore **before** mise (`go:` tools make `pkg/mod` read-only; later tar restore → `File exists`). Lint writes mise; Test writes Go — jobs are sequential so they cannot race the same key.
 
-Do **not** pass `install_args` to mise-action: it hashes into the cache key (splits jobs) and only saves tools installed in that step. `mise run` auto-installs the rest of `[tools]` *after* the cache is written. Job env `MISE_TASK_RUN_AUTO_INSTALL=false` stops that. Go module `actions/cache` must restore **before** mise — `go:` packages make `~/go/pkg/mod` read-only and a later tar restore dies with `File exists`. `golangci-lint-action` always re-downloads the binary even when its analysis cache hits; lint uses mise for the binary.
+Required checks: `CI / Lint` + `CI / Test` on PRs. **Do not** require `CI / E2E` on pull requests (the job is skipped → required check stays pending). Require `CI / E2E` on the [merge queue](https://github.com/vulkoingim/zrok-operator/settings/branches) if you want Kind before merge. Enable merge queue on `main` and add that check there.
+
+Release stays in `release.yml` (`v*` tags → GoReleaser). Test job also runs `go mod verify` + `go mod tidy` + `git diff --exit-code`.
 
 ## Cutting a release
 
