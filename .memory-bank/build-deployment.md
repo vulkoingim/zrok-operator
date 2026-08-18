@@ -1,16 +1,16 @@
 # Build & Deployment
 
-> **Last Updated:** 2026-08-18 (version stamp)
+> **Last Updated:** 2026-08-18
 
 ## Version stamp
 
-No `version` file. Version/Date via `-ldflags -X`. GitRevision from `runtime/debug` (`vcs.revision`, `vcs.modified`) when `-buildvcs` is on (mise + GoReleaser). Docker has no `.git` so it still passes `GIT_REVISION` as `-X`.
+No `version` file. Version/Date via `-ldflags -X`. GitRevision from `runtime/debug` (`vcs.revision`, `vcs.modified`) when `-buildvcs` is on (mise + GoReleaser). `mise run docker-build` compiles on the host (`-buildvcs=true`) then `Dockerfile.fast` COPY — no git inside the image. The multi-stage `Dockerfile` still accepts `VERSION`/`GIT_REVISION`/`DATE` build-args if you `docker build .` without mise.
 
-| Var | Local (`mise run build`) | GoReleaser | Docker |
+| Var | Local (`mise run build` / `docker-build`) | GoReleaser | Multi-stage `Dockerfile` |
 |---|---|---|---|
-| `Version` | `git describe --tags --always --dirty` | `{{.Version}}` | same `--build-arg` |
+| `Version` | `git describe --tags --always --dirty` | `{{.Version}}` | `--build-arg` |
 | `GitRevision` | `debug.ReadBuildInfo` | same (`-buildvcs=true`) | `-X` from host `git rev-parse --short HEAD` |
-| `Date` | UTC now | `{{.Date}}` | same `--build-arg` |
+| `Date` | git committer time (`%cI`) | `{{.Date}}` | `--build-arg` (wall clock if unset) |
 
 `go run` still gets VCS revision (`-buildvcs=auto`) **if you build the package** (`./cmd`, not `cmd/main.go` — file-list builds are `command-line-arguments` and omit VCS). Version stays `dev` unless ldflags. `bin/manager -version` prints them. There is no stdlib `git describe` — `Main.Version` is a module/pseudo-version, not what we stamp.
 
@@ -50,7 +50,7 @@ Triggers: `pull_request`, `push` to `main`, `merge_group` (merge queue), `workfl
 |---|---|---|
 | `Lint` | always | writes shared mise tool cache; golangci analysis |
 | `Test` | `needs: [lint]` | restores mise; writes Go mod/build cache on miss; envtest `bin/k8s` |
-| `E2E` | `needs: [test]`; **not** on PRs. Runs on `merge_group`, `push` to `main`, or `workflow_dispatch` with `e2e=true`. Live share if repo secret `ZROK2_ENABLE_TOKEN` is set (`ci.yml` already maps it). | restore mise+Go; kindest/node tarball; buildx `type=gha` |
+| `E2E` | `needs: [test]`; **not** on PRs. Runs on `merge_group`, `push` to `main`, or `workflow_dispatch` with `e2e=true`. Live share if repo secret `ZROK2_ENABLE_TOKEN` is set (`ci.yml` already maps it). | restore mise+Go; kindest/node tarball |
 
 Do **not** pass `install_args` to mise-action (splits the cache key). `MISE_TASK_RUN_AUTO_INSTALL=false` so `mise run` does not install extra tools after the action. Go restore **before** mise (`go:` tools make `pkg/mod` read-only; later tar restore → `File exists`). Lint writes mise; Test writes Go — jobs are sequential so they cannot race the same key.
 
@@ -70,7 +70,7 @@ git push origin v0.0.1
 
 `.goreleaser.yaml` + `Dockerfile.goreleaser` (COPY pre-built `linux/<arch>/manager` into distroless — do not `go build` in that Dockerfile). Workflow: `goreleaser/goreleaser-action@v7` then `helm push dist/helm/*.tgz oci://ghcr.io/<owner>/charts`. Chart path is **`charts/zrok-operator`**, not the operator image repo. `helm package --version {{.Version}}` (no `v` prefix). After the first chart push, set the GHCR package **public** if the repo is public: [packages](https://github.com/vulkoingim?tab=packages).
 
-Local image builds (`mise run docker-build` / kind:deploy) still use the multi-stage `Dockerfile` and **must** `docker build --load` so the tag exists in the daemon Kind uses.
+Local image builds (`mise run docker-build` / `kind:load`) cross-compile `bin/manager-linux-<arch>` on the host, then `docker build -f Dockerfile.fast` from a **one-file temp context** (repo `.dockerignore` excludes `bin/`). `--load` so Kind can import the tag. `kind:load` skips import only when the **image ID** is already on the node (same tag + new digest must reload; `imagePullPolicy: IfNotPresent`). `mise run test:e2e` / `make test-e2e` run `kind:load` then set `SKIP_IMAGE_BUILD` + `SKIP_KIND_LOAD` so Ginkgo does not pay docker/kind twice.
 
 ## RBAC highlights
 

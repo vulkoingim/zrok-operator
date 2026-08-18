@@ -7,14 +7,10 @@ set -euo pipefail
 
 IMG="${usage_img:-${IMG:-zrok-operator:dev}}"
 NAME="${usage_name:-kind}"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# shellcheck source=lib/kind-image.sh
+source "$ROOT/.mise-tasks/lib/kind-image.sh"
 
+export KIND_CLUSTER="$NAME"
 docker image inspect "$IMG" >/dev/null
-
-echo "Loading $IMG into kind/$NAME"
-if ! kind load docker-image "$IMG" --name "$NAME"; then
-  echo "kind load docker-image failed; falling back to image-archive" >&2
-  tmp="$(mktemp)"
-  trap 'rm -f "$tmp"' EXIT
-  docker save -o "$tmp" "$IMG"
-  kind load image-archive "$tmp" --name "$NAME"
-fi
+kind_load_if_needed "$IMG" "$NAME"

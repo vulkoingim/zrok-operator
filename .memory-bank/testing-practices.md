@@ -8,7 +8,7 @@
 |---|---|---|
 | Unit / envtest | `internal/...` (exclude e2e) | `mise run test` |
 | Agent helpers | `internal/agent/*_test.go` | included in `mise run test` |
-| E2E Kind | `test/e2e/` | `controller-runtime` client against Kind; samples decoded via scheme from `config/samples/zrok_v1alpha1_environment_share.yaml` (token + random `nameSelection.name` patched in place). Nginx via typed Deployment/Service. `make install`/`deploy` still shell out. `cleanupLiveZrokTestResources` uses API delete + finalizer patch fallback. `mise run test:e2e`. CI: merge queue / `main` / dispatch — **not** every PR. |
+| E2E Kind | `test/e2e/` | `kind:load` → host linux cross-compile + `Dockerfile.fast` (one-file context; skips kind import if **image ID** already on the node). Ginkgo `SKIP_IMAGE_BUILD`/`SKIP_KIND_LOAD` after that. Optional live share when `ZROK2_ENABLE_TOKEN` set. `mise run test:e2e` / `make test-e2e`. |
 
 ## Mocks (mandatory)
 

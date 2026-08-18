@@ -57,7 +57,7 @@ test-verbose: gen ## Verbose unit + envtest
 	$(TASKS)/test/verbose
 
 .PHONY: test-e2e
-test-e2e: ## Kind e2e (set ZROK2_ENABLE_TOKEN for live share)
+test-e2e: kind-up kind-load ## Kind e2e (set ZROK2_ENABLE_TOKEN for live share)
 	IMG="$(IMG)" $(TASKS)/test/e2e
 
 .PHONY: lint
@@ -109,11 +109,11 @@ kind-up: ## Create Kind cluster (mise: kind:up)
 	$(TASKS)/kind/up
 
 .PHONY: kind-load
-kind-load: ## Load image into Kind (mise: kind:load)
+kind-load: docker-build ## Load image into Kind (mise: kind:load)
 	IMG="$(IMG)" $(TASKS)/kind/load
 
 .PHONY: kind-deploy
-kind-deploy: ## Build, load, and deploy to Kind (mise: kind:deploy)
+kind-deploy: kind-up kind-load ## Build, load, and deploy to Kind (mise: kind:deploy)
 	IMG="$(IMG)" $(TASKS)/kind/deploy
 
 .PHONY: samples

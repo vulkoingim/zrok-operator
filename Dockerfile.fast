@@ -1,0 +1,7 @@
+# Local/CI image: copies a host-built linux manager. Do not `go build` here.
+# Context is a one-file dir (see .mise-tasks/docker-build). Repo .dockerignore `bin/` does not apply.
+FROM gcr.io/distroless/static:nonroot
+WORKDIR /
+COPY manager /manager
+USER 65532:65532
+ENTRYPOINT ["/manager"]

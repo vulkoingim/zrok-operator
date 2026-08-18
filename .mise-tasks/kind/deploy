@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Build local image, load into Kind, deploy operator"
-#MISE depends=["gen"]
+#MISE depends=["kind:up", "kind:load", "gen"]
 #USAGE flag "--img <img>" help="Image tag" default="zrok-operator:dev"
 #USAGE flag "--name <name>" help="Kind cluster name" default="kind"
 set -euo pipefail
@@ -10,19 +10,7 @@ NAME="${usage_name:-kind}"
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
 
-echo "==> docker build $IMG"
-docker build --load -t "$IMG" .
-docker image inspect "$IMG" >/dev/null
-
-if ! kind get clusters 2>/dev/null | grep -qx "$NAME"; then
-  echo "==> kind create cluster --name $NAME"
-  kind create cluster --name "$NAME"
-fi
-
-echo "==> kind load docker-image $IMG --name $NAME"
-kind load docker-image "$IMG" --name "$NAME"
-
-echo "==> deploy $IMG"
+echo "==> deploy $IMG (image built+loaded via kind:load)"
 cd config/manager
 kustomize edit set image controller="$IMG"
 cd ../..

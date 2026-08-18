@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Build manager Docker image"
+#MISE description="Build manager Docker image (host linux binary + thin image)"
 #USAGE flag "--img <img>" help="Image tag" default="zrok-operator:dev"
 set -euo pipefail
 
@@ -7,29 +7,32 @@ IMG="${usage_img:-${IMG:-zrok-operator:dev}}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=lib/version.sh
 source "$ROOT/.mise-tasks/lib/version.sh"
+# shellcheck source=lib/kind-image.sh
+source "$ROOT/.mise-tasks/lib/kind-image.sh"
 
-echo "Building $IMG"
+GOARCH="$(kind_target_goarch)"
+BINDIR="$ROOT/bin"
+BINARY_NAME="manager-linux-${GOARCH}"
+mkdir -p "$BINDIR"
+
+echo "Building linux/${GOARCH} manager -> bin/${BINARY_NAME}"
 echo "  Version: ${VERSION}"
 echo "  Git revision: ${GIT_REVISION}"
 echo "  Date: ${DATE}"
-# --load is required when the default builder is docker-container / buildx:
-# without it the build can succeed while the tag never appears in `docker images`
-# (Kind then fails with: image not present locally).
-docker_args=(
-  --load
-  --build-arg "VERSION=${VERSION}"
-  --build-arg "GIT_REVISION=${GIT_REVISION}"
-  --build-arg "DATE=${DATE}"
-  -t "$IMG"
-  .
+(
+	cd "$ROOT"
+	CGO_ENABLED=0 GOOS=linux GOARCH="$GOARCH" \
+		go build -trimpath -buildvcs=true -ldflags "$GOLDFLAGS" -o "${BINDIR}/${BINARY_NAME}" ./cmd
 )
-if [[ "${GITHUB_ACTIONS:-}" == "true" ]] && docker buildx version >/dev/null 2>&1; then
-  docker buildx build \
-    --cache-from=type=gha \
-    --cache-to=type=gha,mode=max,ignore-error=true \
-    "${docker_args[@]}"
-else
-  docker build "${docker_args[@]}"
-fi
+
+ctx="$(mktemp -d)"
+trap 'rm -rf "$ctx"' EXIT
+cp "${BINDIR}/${BINARY_NAME}" "$ctx/manager"
+
+echo "Building image $IMG from Dockerfile.fast"
+docker build --load \
+	-f "$ROOT/Dockerfile.fast" \
+	-t "$IMG" \
+	"$ctx"
 docker image inspect "$IMG" >/dev/null
 echo "Built $IMG ($(docker image inspect -f '{{.Id}}' "$IMG"))"
