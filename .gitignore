@@ -26,6 +26,7 @@ go.work.sum
 
 # GoReleaser
 dist/
+.release/
 
 # Dirs
 .DS_Store

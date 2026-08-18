@@ -68,7 +68,7 @@ git tag -a v0.0.1 -m "v0.0.1"
 git push origin v0.0.1
 ```
 
-`.goreleaser.yaml` + `Dockerfile.goreleaser` (COPY pre-built `linux/<arch>/manager` into distroless — do not `go build` in that Dockerfile). Workflow: `goreleaser/goreleaser-action@v7` then `helm push dist/helm/*.tgz oci://ghcr.io/<owner>/charts`. Chart path is **`charts/zrok-operator`**, not the operator image repo. `helm package --version {{.Version}}` (no `v` prefix). After the first chart push, set the GHCR package **public** if the repo is public: [packages](https://github.com/vulkoingim?tab=packages).
+`.goreleaser.yaml` + `Dockerfile.goreleaser` (COPY pre-built `linux/<arch>/manager` into distroless — do not `go build` in that Dockerfile). Workflow: `goreleaser/goreleaser-action@v7` then `helm push .release/helm/*.tgz oci://ghcr.io/<owner>/charts`. Helm packages to `.release/helm` (not `dist/` — GoReleaser owns `dist` after `--clean`). Chart path is **`charts/zrok-operator`**, not the operator image repo. `helm package --version {{.Version}}` (no `v` prefix). After the first chart push, set the GHCR package **public** if the repo is public: [packages](https://github.com/vulkoingim?tab=packages).
 
 Local image builds (`mise run docker-build` / `kind:load`) cross-compile `bin/manager-linux-<arch>` on the host, then `docker build -f Dockerfile.fast` from a **one-file temp context** (repo `.dockerignore` excludes `bin/`). `--load` so Kind can import the tag. `kind:load` skips import only when the **image ID** is already on the node (same tag + new digest must reload; `imagePullPolicy: IfNotPresent`). `mise run test:e2e` / `make test-e2e` run `kind:load` then set `SKIP_IMAGE_BUILD` + `SKIP_KIND_LOAD` so Ginkgo does not pay docker/kind twice.
 

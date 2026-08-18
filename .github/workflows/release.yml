@@ -65,9 +65,9 @@ jobs:
       - name: Push Helm chart to GHCR
         run: |
           shopt -s nullglob
-          charts=(dist/helm/zrok-operator-*.tgz)
+          charts=(.release/helm/zrok-operator-*.tgz)
           if [[ ${#charts[@]} -ne 1 ]]; then
-            echo "expected exactly one chart tgz under dist/helm, got: ${charts[*]-none}" >&2
+            echo "expected exactly one chart tgz under .release/helm, got: ${charts[*]-none}" >&2
             exit 1
           fi
           helm push "${charts[0]}" "oci://ghcr.io/${{ github.repository_owner }}/charts"

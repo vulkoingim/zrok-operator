@@ -6,7 +6,7 @@ project_name: zrok-operator
 before:
   hooks:
     - go mod tidy
-    - sh -c 'mkdir -p dist/helm charts/zrok-operator/crds && cp config/crd/bases/*.yaml charts/zrok-operator/crds/ && helm package charts/zrok-operator -d dist/helm --version {{ .Version }} --app-version {{ .Version }}'
+    - sh -c 'mkdir -p .release/helm charts/zrok-operator/crds && cp config/crd/bases/*.yaml charts/zrok-operator/crds/ && helm package charts/zrok-operator -d .release/helm --version {{ .Version }} --app-version {{ .Version }}'
 
 snapshot:
   version_template: "{{ incpatch .Version }}-next"
@@ -86,7 +86,7 @@ changelog:
 release:
   prerelease: auto
   extra_files:
-    - glob: dist/helm/zrok-operator-*.tgz
+    - glob: .release/helm/zrok-operator-*.tgz
   footer: |
     ## Install
 
