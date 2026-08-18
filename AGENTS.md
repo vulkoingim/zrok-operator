@@ -57,7 +57,7 @@ mise run build               # bin/manager
 mise run kind-up && mise run kind-deploy
 mise run test-e2e            # needs Kind; ZROK2_ENABLE_TOKEN for live share
 mise run samples --secret    # apply sample CRs
-git tag -a v0.1.0 -m v0.1.0 && git push origin v0.1.0  # GoReleaser → GHCR + GitHub Release
+git tag -a v0.0.1 -m v0.0.1 && git push origin v0.0.1  # GoReleaser → GHCR + GitHub Release
 ```
 
 Mocks: edit `.mockery.yml` → `mise run gen` (or `mise run gen:mocks`). **Never hand-write mocks.**

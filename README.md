@@ -136,6 +136,12 @@ status:
 ## Helm
 
 ```bash
+# Released chart (tag vX.Y.Z → chart version X.Y.Z, image :X.Y.Z)
+helm upgrade --install zrok-operator oci://ghcr.io/vulkoingim/charts/zrok-operator \
+  --version 0.0.1 \
+  -n zrok-operator --create-namespace
+
+# From this repo (dev)
 helm upgrade --install zrok-operator ./charts/zrok-operator \
   -n zrok-operator --create-namespace \
   --set image.repository=zrok-operator \

@@ -14,6 +14,8 @@
 
 ## Recent Progress
 
+- **Helm OCI** (2026-08-18): `helm push` to `oci://ghcr.io/vulkoingim/charts` after GoReleaser. Distinct from operator image path.
+
 - **Single CI workflow** (2026-08-18): `ci.yml` — Lint (writes mise cache) → Test → E2E only on merge queue / `main` / manual dispatch. See [build-deployment.md](build-deployment.md).
 
 - **CI caches** (2026-08-17): Go restore before mise. Shared mise `[tools]` cache; only `test.yml` saves mise+Go keys (lint/e2e restore-only — GHA forbids parallel save of the same key). Kind node image + buildx GHA layer cache on e2e. Lint uses mise for the golangci-lint binary.

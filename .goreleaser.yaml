@@ -93,7 +93,9 @@ release:
     Image: `ghcr.io/vulkoingim/zrok-operator:{{ .Tag }}` (also tagged `{{ .Version }}`).
 
     ```bash
-    helm upgrade --install zrok-operator ./zrok-operator-{{ .Version }}.tgz \
-      --namespace zrok-operator --create-namespace \
-      --set image.tag={{ .Version }}
+    helm upgrade --install zrok-operator oci://ghcr.io/vulkoingim/charts/zrok-operator \
+      --version {{ .Version }} \
+      --namespace zrok-operator --create-namespace
     ```
+
+    Chart tarball is also attached to this release.

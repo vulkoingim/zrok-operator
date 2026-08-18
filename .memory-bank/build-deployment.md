@@ -8,7 +8,7 @@
 |---|---|
 | Manager binary | `mise run build` → `bin/manager`; release: linux/amd64 + linux/arm64 archives |
 | Container image | `ghcr.io/vulkoingim/zrok-operator` (`{{.Tag}}`, `{{.Version}}`, `latest`) linux/amd64+arm64 |
-| Helm chart | `charts/zrok-operator/` packaged onto the GitHub Release (`zrok-operator-<version>.tgz`) |
+| Helm chart | `oci://ghcr.io/vulkoingim/charts/zrok-operator` + GitHub Release tgz |
 | CRDs | `config/crd/bases/` + chart `crds/` |
 
 ## Install paths
@@ -19,9 +19,10 @@ mise run deploy
 # or: make deploy IMG=zrok-operator:dev   # runs .mise-tasks/deploy
 
 # Helm
-helm upgrade --install zrok-operator ./charts/zrok-operator \
-  -n zrok-operator --create-namespace \
-  --set image.repository=... --set image.tag=...
+helm upgrade --install zrok-operator oci://ghcr.io/vulkoingim/charts/zrok-operator \
+  --version <semver without v> \
+  -n zrok-operator --create-namespace
+# local chart: ./charts/zrok-operator --set image.repository=... --set image.tag=...
 ```
 
 Prefer pre-created enable-token Secret over chart `--set credentials.enableToken`.
@@ -50,11 +51,11 @@ Annotated semver tag, leading `v`. Never retag; retract and roll forward.
 
 ```bash
 goreleaser check   # optional local validate
-git tag -a v0.1.0 -m "v0.1.0"
-git push origin v0.1.0
+git tag -a v0.0.1 -m "v0.0.1"
+git push origin v0.0.1
 ```
 
-`.goreleaser.yaml` + `Dockerfile.goreleaser` (COPY pre-built `linux/<arch>/manager` into distroless — do not `go build` in that Dockerfile). Workflow: `goreleaser/goreleaser-action@v7` (`distribution: goreleaser`, `~> v2`), `packages: write` + GHCR login. Helm is packaged in a GoReleaser `before` hook (`azure/setup-helm` on the job).
+`.goreleaser.yaml` + `Dockerfile.goreleaser` (COPY pre-built `linux/<arch>/manager` into distroless — do not `go build` in that Dockerfile). Workflow: `goreleaser/goreleaser-action@v7` then `helm push dist/helm/*.tgz oci://ghcr.io/<owner>/charts`. Chart path is **`charts/zrok-operator`**, not the operator image repo. `helm package --version {{.Version}}` (no `v` prefix). After the first chart push, set the GHCR package **public** if the repo is public: [packages](https://github.com/vulkoingim?tab=packages).
 
 Local image builds (`mise run docker-build` / kind-deploy) still use the multi-stage `Dockerfile` and **must** `docker build --load` so the tag exists in the daemon Kind uses.
 

@@ -77,18 +77,5 @@ KUBEBUILDER_ASSETS="$ASSETS" gotestsum --format standard-verbose -- \
 '''
 
 [tasks.lint]
-description = "golangci-lint"
-run = "golangci-lint run --timeout=5m"
-
-[tasks.lint-fix]
 description = "golangci-lint --fix"
 run = "golangci-lint run --fix"
-
-[tasks.install]
-description = "Install CRDs into current cluster"
-depends = ["manifests"]
-run = "kubectl apply -f config/crd/bases"
-
-[tasks.uninstall]
-description = "Remove CRDs from current cluster"
-run = "kubectl delete -f config/crd/bases --ignore-not-found=true"

@@ -1,6 +1,6 @@
 # Tech Context
 
-> **Last Updated:** 2026-08-17
+> **Last Updated:** 2026-08-18
 
 | Item | Value |
 |---|---|
@@ -15,7 +15,7 @@
 | Envtest | K8s 1.36 assets |
 | Tests | gotestsum, Ginkgo (controller suite / e2e), testify mocks |
 | Image registry | `ghcr.io/vulkoingim/zrok-operator` (GoReleaser `dockers_v2`, linux/amd64+arm64) |
-| Chart | `charts/zrok-operator` (packaged onto GitHub Releases; Chart.yaml still 0.1.0 until tagged) |
+| Chart | `oci://ghcr.io/vulkoingim/charts/zrok-operator` (Chart.yaml 0.0.1 is overridden at release) |
 
 ## External systems
 
