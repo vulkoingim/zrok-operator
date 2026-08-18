@@ -79,7 +79,7 @@ Does **not** Own K8s children. Watches Environments → map to Shares (`mapEnvTo
 3. Never Unshare a reserved-name holder with a different target unless the CR already owns that token
 4. Operator owns lifecycle; agent registry wiped on restart
 5. Requeue Ready every 2m for drift; NameConflict requeues 2m
-6. No share metadata API — identification via reserved name + env description/host `zrok-operator/{ns}/{env}` + upstream URL
+6. No share metadata API — identification via reserved name + env description/host `{uniqueID}/zrok-operator/{ns}/{env}` + upstream URL
 
 ## Edge Cases & Failure Modes
 

@@ -14,6 +14,16 @@ type ZrokEnvironmentSpec struct {
 	// +optional
 	ApiEndpoint string `json:"apiEndpoint,omitempty"`
 
+	// UniqueID prefixes the remote zrok environment host and description
+	// (`{uniqueID}/zrok-operator/{namespace}/{name}`). When empty, defaults to
+	// the UUID (metadata.uid) of the kube-system Namespace:
+	//
+	//	kubectl get ns kube-system -o jsonpath='{.metadata.uid}'
+	//
+	// Applied at Enable; changing this later does not rename an existing remote env.
+	// +optional
+	UniqueID string `json:"uniqueID,omitempty"`
+
 	// EnableTokenSecretRef references a Secret key containing the zrok account enable token.
 	// +kubebuilder:validation:Required
 	EnableTokenSecretRef corev1.SecretKeySelector `json:"enableTokenSecretRef"`
@@ -76,6 +86,10 @@ type ZrokEnvironmentStatus struct {
 	// EnvZID is the Ziti identity of the enabled zrok environment.
 	// +optional
 	EnvZID string `json:"envZID,omitempty"`
+
+	// UniqueID is the prefix used at Enable (spec.uniqueID, or kube-system Namespace UUID).
+	// +optional
+	UniqueID string `json:"uniqueID,omitempty"`
 
 	// AgentService is the cluster DNS name of the agent Service.
 	// +optional

@@ -143,10 +143,11 @@ func main() {
 	zrokClients := zrokclient.NewDefaultClients(nil)
 
 	if err = (&controller.ZrokEnvironmentReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorder("zrokenvironment-controller"),
-		Zrok:     zrokClients,
+		Client:    mgr.GetClient(),
+		APIReader: mgr.GetAPIReader(),
+		Scheme:    mgr.GetScheme(),
+		Recorder:  mgr.GetEventRecorder("zrokenvironment-controller"),
+		Zrok:      zrokClients,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ZrokEnvironment")
 		os.Exit(1)

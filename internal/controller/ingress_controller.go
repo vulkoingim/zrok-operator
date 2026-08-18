@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"maps"
 	"strings"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -123,9 +124,7 @@ func (r *IngressReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		if desired.Labels == nil {
 			desired.Labels = map[string]string{}
 		}
-		for k, v := range agent.ShareLabels(desired) {
-			desired.Labels[k] = v
-		}
+		maps.Copy(desired.Labels, agent.ShareLabels(desired))
 		return nil
 	})
 	if err != nil {

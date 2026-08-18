@@ -1,6 +1,6 @@
 # Area: Environment Lifecycle
 
-> **Last Updated:** 2026-08-13
+> **Last Updated:** 2026-08-18
 
 ## Overview
 
@@ -33,7 +33,7 @@ sequenceDiagram
 ## How It Works
 
 1. **Finalizer** `zrok.k8s.zrok.io/environment` on create path
-    2. **ensureEnabled** — if identity Secret absent: REST `Enable` with `host` and `description` both `zrok-operator/{ns}/{name}` (`agent.EnvironmentHost` / `EnvironmentDescription`); persist Secret keys `envZID`, `environment.json`, `identity`, `metadata.json`, `config.json`. Race on Create → Disable orphan envZID
+    2. **ensureEnabled** — if identity Secret absent: REST `Enable` with `host` and `description` both `{uniqueID}/zrok-operator/{ns}/{name}` (`agent.EnvironmentHost` / `EnvironmentDescription`). `uniqueID` is `spec.uniqueID` or the kube-system Namespace UUID. Persist Secret keys `envZID`, `environment.json`, `identity`, `metadata.json`, `config.json`. Race on Create → Disable orphan envZID
 3. **Ensure children** — PVC `{env}-zrok-home`, Service `{env}-agent`, Deployment `{env}-agent` via `internal/agent` Desired* helpers; `SetControllerReference`
 4. **Ready** — Deploy ReadyReplicas≥1 **and** Agent `Status` succeeds
 5. **Delete** — if any Share lists this Env → requeue / event `SharesExist`; else REST `Disable` unless `reclaimPolicy=Retain`; delete Deploy/Service/Secret/(PVC if Delete)
@@ -53,7 +53,8 @@ sequenceDiagram
 2. Identity Secret is source of truth for enable; missing Secret with EnvZID forces re-enable
 3. Cannot delete Env while Shares exist
 4. Default API endpoint `https://api-v2.zrok.io` when `spec.apiEndpoint` empty
-5. Agent start **wipes** `agent-registry.json` (operator owns shares)
+5. Enable host/description `{uniqueID}/zrok-operator/{ns}/{name}`; `uniqueID` defaults to kube-system Namespace UUID
+6. Agent start **wipes** `agent-registry.json` (operator owns shares)
 
 ## Edge Cases & Failure Modes
 
@@ -63,6 +64,7 @@ sequenceDiagram
 | Agent not Ready | Ready=False; keep reconciling |
 | Shares still present on Env delete | Block; event `SharesExist` |
 | `reclaimPolicy=Retain` | Skip Disable; leave remote env |
+| kube-system GET fails and `spec.uniqueID` empty | EnableError; set `spec.uniqueID` or fix RBAC |
 | PVC already has stale identity | Seed init repairs `identities/environment.json` |
 
 ## Known Issues & Tech Debt

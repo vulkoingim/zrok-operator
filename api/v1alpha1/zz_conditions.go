@@ -20,6 +20,10 @@ const (
 // DefaultEnableTokenKey is the Secret key for the zrok account enable token.
 const DefaultEnableTokenKey = "enable-token"
 
+// DefaultUniqueIDNamespace is the Namespace whose UUID (metadata.uid) is used as
+// ZrokEnvironmentSpec.UniqueID when that field is empty.
+const DefaultUniqueIDNamespace = "kube-system"
+
 // DefaultNamespaceToken is the default zrok namespace token (v2).
 const DefaultNamespaceToken = "public"
 

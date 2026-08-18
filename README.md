@@ -1,5 +1,7 @@
 # zrok-operator
 
+Experimental. It comes with no guarantees whatsoever.
+
 Kubernetes operator that exposes in-cluster Services through [zrok/v2](https://github.com/openziti/zrok) public (and private) shares.
 
 This is a **client-side** operator (enable → agent → share), complementary to the official server chart [`openziti/zrok2`](https://netfoundry.io/docs/zrok/self-hosting/deployment/kubernetes). It does **not** deploy the zrok controller or frontend.
@@ -51,27 +53,28 @@ metadata:
   name: default
 spec:
   # apiEndpoint: https://api-v2.zrok.io   # omit = public zrok.io; set for self-hosted
+  # uniqueID: ""                          # omit = kube-system Namespace UUID; prefixes Enable host
   enableTokenSecretRef:
-    name: zrok-credentials          # required
-    key: enable-token               # default key name if omitted
-  reclaimPolicy: Delete             # Delete | Retain  (Disable remote env on CR delete?)
+    name: zrok-credentials # required
+    key: enable-token # default key name if omitted
+  reclaimPolicy: Delete # Delete | Retain  (Disable remote env on CR delete?)
   agent:
-    image: docker.io/openziti/zrok2:2.0.4   # omit = this default
-    replicas: 1                     # only 1 allowed (Recreate)
-    consolePort: 8888               # HTTP console in-pod; manager uses gRPC :7777
+    image: docker.io/openziti/zrok2:2.0.4 # omit = this default
+    replicas: 1 # only 1 allowed (Recreate)
+    consolePort: 8888 # HTTP console in-pod; manager uses gRPC :7777
     persistence:
-      size: 1Gi                     # PVC for ~/.zrok2
+      size: 1Gi # PVC for ~/.zrok2
       # storageClassName: standard  # omit = cluster default
     # resources:                    # standard corev1 ResourceRequirements
     #   requests: { cpu: 50m, memory: 64Mi }
     #   limits:   { cpu: 500m, memory: 256Mi }
 status:
-  envZID: ""                        # ziti identity after Enable
+  envZID: "" # ziti identity after Enable
   agentService: default-agent.default.svc
   agentReady: true
-  conditions:                       # Ready | Enabled | AgentReady
-    - type: Ready                   # True | False | Unknown
-      reason: Ready                 # Ready | WaitingForAgent | SharesExist | …
+  conditions: # Ready | Enabled | AgentReady
+    - type: Ready # True | False | Unknown
+      reason: Ready # Ready | WaitingForAgent | SharesExist | …
 ```
 
 ### ZrokShare
@@ -83,31 +86,31 @@ metadata:
   name: nginx
 spec:
   environmentRef: { name: default } # required; same namespace
-  shareMode: public                 # public | private   (default public)
-  backendMode: proxy                # proxy | web | caddy | drive | tcpTunnel | udpTunnel | socks
+  shareMode: public # public | private   (default public)
+  backendMode: proxy # proxy | web | caddy | drive | tcpTunnel | udpTunnel | socks
   upstream:
-    url: http://nginx.default.svc:80   # required; scheme http|https|tcp|udp
-  nameSelection:                    # public only; omit = ephemeral random URL (dies on agent restart)
-    namespace: public               # zrok namespace token (default public)
-    name: ko-default-nginx          # DNS label [a-z0-9][a-z0-9-]* ; unique on the zrok account
+    url: http://nginx.default.svc:80 # required; scheme http|https|tcp|udp
+  nameSelection: # public only; omit = ephemeral random URL (dies on agent restart)
+    namespace: public # zrok namespace token (default public)
+    name: ko-default-nginx # DNS label [a-z0-9][a-z0-9-]* ; unique on the zrok account
   # privateShareToken: nginx-priv   # private only; omit = random private token
-  insecure: false                   # skip TLS verify to upstream
-  closed: false                     # closed permission mode
-  accessGrants: []                  # emails allowed when closed: true
+  insecure: false # skip TLS verify to upstream
+  closed: false # closed permission mode
+  accessGrants: [] # emails allowed when closed: true
   # basicAuthSecretRef: { name: my-basic-auth }  # Secret keys: username, password
   # oauth:
   #   provider: google              # google | github
   #   emailDomains: ["example.com"]
   #   refreshInterval: 24h          # Go duration
-  reclaimPolicy: Delete             # Delete | Retain  (delete reserved name on CR delete?)
+  reclaimPolicy: Delete # Delete | Retain  (delete reserved name on CR delete?)
 status:
   assignedURL: https://ko-default-nginx.share.zrok.io
   frontendEndpoints: []
   shareToken: ""
-  reservation: reserved             # ephemeral | reserved | private
-  conditions:                       # Ready | EnvironmentReady | ShareCreated | NameReady
+  reservation: reserved # ephemeral | reserved | private
+  conditions: # Ready | EnvironmentReady | ShareCreated | NameReady
     - type: Ready
-      reason: Ready                 # Ready | NameConflict | WaitingForEnvironment | InvalidSpec | …
+      reason: Ready # Ready | NameConflict | WaitingForEnvironment | InvalidSpec | …
 ```
 
 `nameSelection` + `shareMode=private` is rejected (CEL + reconciler). `privateShareToken` + `shareMode=public` likewise.
@@ -123,14 +126,14 @@ metadata:
   name: to-nginx
 spec:
   environmentRef: { name: default } # required; same namespace
-  shareToken: "<private share token>"  # required
-  bindAddress: "0.0.0.0:0"          # default; agent-local listen addr
+  shareToken: "<private share token>" # required
+  bindAddress: "0.0.0.0:0" # default; agent-local listen addr
 status:
-  frontendEndpoint: ""              # bound address when known
-  accessToken: ""                   # agent frontend token
+  frontendEndpoint: "" # bound address when known
+  accessToken: "" # agent frontend token
   conditions:
-    - type: Ready                   # True | False | Unknown
-      reason: Ready                 # Ready | WaitingForEnvironment | AccessError | …
+    - type: Ready # True | False | Unknown
+      reason: Ready # Ready | WaitingForEnvironment | AccessError | …
 ```
 
 ## Helm

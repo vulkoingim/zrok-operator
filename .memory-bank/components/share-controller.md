@@ -56,7 +56,7 @@ Kubernetes-native share lifecycle so users don’t run `zrok2 share` by hand, an
 ### Assumptions & Limitations
 
 - zrok Share API has no metadata/tags — cannot push description/labels to shares
-- Env Enable still gets description+host `zrok-operator/{ns}/{name}`
+- Env Enable still gets description+host `{uniqueID}/zrok-operator/{ns}/{name}`
 - Ephemeral shares are intentionally non-sticky under registry wipe
 - Ready requeue 2m assumes eventual consistency with agent Status
 

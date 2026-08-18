@@ -89,9 +89,10 @@ Mocks: edit `.mockery.yml` → `mise run gen` (or `mise run gen:mocks`). **Never
 6. **Agent replicas must be 1** (Recreate strategy). Manager talks to agent via **gRPC** through socat TCP→unix (`AgentDialAddr`), not HTTP `/v1/agent/*` (README is stale on that point).
 7. **Do not hand-write mocks.** Interfaces in `.mockery.yml` → `mise run gen`.
 8. **Env delete blocked** while live Shares reference the Environment.
-9. **No secrets in docs** (`manifest.yaml` enable tokens stay local/untracked).
-10. **Status writes** go through `status.PatchStatus` (MergeFrom + conflict retry), not bare `_ = Status().Update`.
-11. **When docs and code disagree, code wins — then update the memory bank immediately.**
+9. **Enable host is `{uniqueID}/zrok-operator/{ns}/{name}`.** `spec.uniqueID` overrides; default is the kube-system Namespace UUID. Changing it after Enable does not rename the remote env.
+10. **No secrets in docs** (`manifest.yaml` enable tokens stay local/untracked).
+11. **Status writes** go through `status.PatchStatus` (MergeFrom + conflict retry), not bare `_ = Status().Update`.
+12. **When docs and code disagree, code wins — then update the memory bank immediately.**
 
 ---
 

@@ -14,6 +14,7 @@ metadata:
   namespace: default
 spec:
   # apiEndpoint: https://api-v2.zrok.io  # default; set for self-hosted openziti/zrok2 chart
+  # uniqueID: ""  # omit = kube-system Namespace UUID
   enableTokenSecretRef:
     name: zrok-credentials
     key: enable-token

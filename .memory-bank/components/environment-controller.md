@@ -3,7 +3,7 @@
 - **Location**: `internal/controller/environment_controller.go`
 - **Purpose**: Enable zrok env, materialize identity + agent workload, Disable on delete
 - **Owner**: manager (`zrokenvironment-controller` recorder)
-- **Last analysed**: 2026-08-12
+- **Last analysed**: 2026-08-18
 
 ## Data Flow Diagram
 
@@ -46,13 +46,14 @@ One CR ≈ one zrok environment + one agent data plane for Shares/Accesses in th
 
 - Finalizer `zrok.k8s.zrok.io/environment`
 - ControllerReference on Deploy/Service/PVC/Secret
-- Description `zrok-operator/{ns}/{name}`
+- Description `{uniqueID}/zrok-operator/{ns}/{name}` (`spec.uniqueID` or kube-system Namespace UUID)
 
 ## Dependencies
 
 | Dependency | Details |
 |------------|---------|
 | `RESTClient.Enable/Disable` | Controller API |
+| `client.Reader` (APIReader) | GET `kube-system` UUID when `spec.uniqueID` empty |
 | `AgentClient.Status` | Ready gate |
 | `internal/agent` Desired* | Resource shapes |
 | Enable token Secret | `spec.enableTokenSecretRef` (key default `enable-token`) |
@@ -64,6 +65,7 @@ Share + Access reconcilers require Env Ready. Ingress defaults EnvironmentRef to
 ## Configuration
 
 - `spec.apiEndpoint` (default empty → `https://api-v2.zrok.io`)
+- `spec.uniqueID` (default empty → kube-system Namespace UUID; Enable host prefix)
 - `spec.agent.image` (default `docker.io/openziti/zrok2:2.0.4`)
 - `spec.agent.consolePort` default 8888
 - Persistence size default 1Gi RWO
