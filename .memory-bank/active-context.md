@@ -14,11 +14,11 @@
 
 ## Recent Progress
 
-- **Share reserved-name rename** (2026-08-18): `spec.nameSelection.name` is the DNS label (not the FQDN). Changing it Unshares **ours**, `DeleteShareName`s the old label (unless Retain), reserves+SharePublics the new name. Adopt now requires frontend name / shareMode / backendMode / closed match; oauth/basicAuth/insecure/grants via `applied-digest`. Access `shareToken` / explicit bind rebuilds. Ingress strips `.shares.zrok.io` from Host. DeleteShareName **401** → NameRetained + drop finalizer. Live e2e waits on `d1592fdb60580fe884c3e43946d9` and recreates the enable-token Secret after sample apply.
+- **Share reserved-name rename** (2026-08-18): `spec.nameSelection.name` is the DNS label (not the FQDN). Changing it Unshares **ours**, `DeleteShareName`s the old label (unless Retain), reserves+SharePublics the new name. Adopt now requires frontend name / shareMode / backendMode / closed match; oauth/basicAuth/insecure/grants via `applied-digest`. Access `shareToken` / explicit bind rebuilds. Ingress strips `.shares.zrok.io` from Host. DeleteShareName **401** → NameRetained + drop finalizer. Live e2e drops the sample share and recreates it with a random reserved name; recreates the enable-token Secret after sample apply.
 
 - **Hardening** (2026-08-18): https+allowlist `apiEndpoint` (drop `X-TOKEN` on redirect); agent image allowlist; ClusterIP-only agent Service; localhost console; `automountServiceAccountToken: false`; unowned identity Secret deleted; Helm `networkPolicy.enabled` (default false) gates manager NP + `--agent-network-policy`; namespaced leader-election Role; metrics TokenReview RBAC + metrics Service; e2e enable token via stdin (argv redacted). `--restrict-upstream` optional.
 
-- **Dead scaffold purge** (2026-08-18): no cert-manager/prometheus-operator e2e; dropped unused `config/prometheus`, `config/network-policy`, cert-manager metrics patch, samples kustomization, webhook wiring in `cmd/main.go`, unused `internal/gateway` stub. E2e is manager + `/metrics` + optional live share.
+- **Dead scaffold purge** (2026-08-18): no cert-manager/prometheus-operator e2e; dropped unused `config/prometheus`, `config/network-policy`, cert-manager metrics patch, samples kustomization, webhook wiring in `cmd/main.go`, unused `internal/gateway` stub. E2e is manager deploy + optional live share (`ZROK2_ENABLE_TOKEN`).
 
 - **E2E `make install` parse fail** (2026-08-18): GNU Make `.PHONY: kind:up` → `target pattern contains no '%'`. Wrappers are `kind-up` → `.mise-tasks/kind/up`. E2e Ginkgo still calls `make install`.
 

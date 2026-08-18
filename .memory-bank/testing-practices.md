@@ -8,7 +8,7 @@
 |---|---|---|
 | Unit / envtest | `internal/...` (exclude e2e) | `mise run test` |
 | Agent helpers | `internal/agent/*_test.go` | included in `mise run test` |
-| E2E Kind | `test/e2e/` | Manager pod Running + HTTPS `/metrics` scrape + optional live share (`ZROK2_ENABLE_TOKEN`). Live share is nested in the Manager Ordered container so it runs **before** AfterAll undeploy. Sample path is repo-root `config/samples/...` (`utils.Run` cds to project root). Share name is `d1592fdb60580fe884c3e43946d9`. Sample Secret is a placeholder — e2e recreates `zrok-credentials` **after** apply. `mise run test:e2e`. CI: merge queue / `main` / dispatch — **not** every PR. |
+| E2E Kind | `test/e2e/` | Deploy manager via `make install`/`deploy`; optional live share when `ZROK2_ENABLE_TOKEN` is set (otherwise Skip). `cleanupLiveZrokTestResources` runs on `DeferCleanup` and in `AfterAll` **before** `make undeploy` (shares → env → nginx/agent orphans). `mise run test:e2e`. CI: merge queue / `main` / dispatch — **not** every PR. |
 
 ## Mocks (mandatory)
 
@@ -35,7 +35,7 @@
 
 Ginkgo e2e calls `make install` / `make deploy` (parses the **whole** Makefile). GNU Make treats `kind:up` as a static pattern → `target pattern contains no '%'`. Make wrappers are `kind-up` / `kind-load` / `kind-deploy` → `.mise-tasks/kind/{up,load,deploy}`. Mise names stay `kind:up`.
 
-No cert-manager / prometheus-operator in e2e. Metrics TLS is controller-runtime self-signed; the scrape test uses `curl -k`. Helm `metrics.serviceMonitor` is the scrape path if you want Prometheus Operator in-cluster. Live-share e2e creates the enable-token Secret via `--from-file=enable-token=/dev/stdin` (argv is redacted).
+No cert-manager / prometheus-operator in e2e. Helm `metrics.serviceMonitor` is the in-cluster Prometheus scrape path when enabled. Live-share e2e creates the enable-token Secret via `--from-file=enable-token=/dev/stdin` (argv is redacted).
 
 ## One-test tip
 
