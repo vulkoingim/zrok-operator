@@ -1,6 +1,6 @@
 # Area: Share Lifecycle
 
-> **Last Updated:** 2026-08-13
+> **Last Updated:** 2026-08-18
 
 ## Overview
 
@@ -23,7 +23,9 @@ flowchart TD
   cls -->|ours remotely, agent miss| rebind[Unshare our token]
   cls -->|missing| reserve[CreateShareName + reserved=true]
   rebind --> reserve
-  reserve --> create[SharePublic / SharePrivate]
+  reserve --> promote{UpdateShareName}
+  promote -->|401 other account| conflict
+  promote -->|ok| create[SharePublic / SharePrivate]
   create --> conflict409{409?}
   conflict409 -->|ours| rebind
   conflict409 -->|foreign| conflict
@@ -55,6 +57,7 @@ Invalid: `nameSelection` with private; `privateShareToken` with public.
 - Name held remotely, **same target**, agent empty → Unshare **our** token (reserved name stays) → SharePublic (registry-wipe heal)
 - Name held remotely, **different target**, CR does not own that token → `NameConflict`, **never Unshare**
 - Another `ZrokShare` already claims the same `nameSelection` (any namespace) → `NameConflict`, **never Unshare**
+- CreateShareName 409 then UpdateShareName **401** → `NameConflict` (another zrok account owns the name; public frontend names are globally unique)
 - SharePublic 409: re-inventory; same rules (adopt ours / rebind ours / NameConflict)
 - Agent `BackendEndpoint` empty or inactive → do not adopt; Release + recreate
 - `ListShares` error: if the agent still has our active matching share, stay Ready; otherwise `InventoryError`
@@ -74,7 +77,7 @@ Does **not** Own K8s children. Watches Environments → map to Shares (`mapEnvTo
 
 ## Business Rules
 
-1. CreateShareName **409/already = success**; always promote with UpdateShareName(reserved=true) — skipped on NameConflict
+1. CreateShareName **409/already = success**; always promote with UpdateShareName(reserved=true) — skipped on NameConflict. UpdateShareName **401** → NameConflict (name owned by another zrok account; public frontend names are globally unique)
 2. Only adopt **active** agent shares whose backend matches `spec.upstream`
 3. Never Unshare a reserved-name holder with a different target unless the CR already owns that token
 4. Operator owns lifecycle; agent registry wiped on restart
@@ -86,6 +89,7 @@ Does **not** Own K8s children. Watches Environments → map to Shares (`mapEnvTo
 | Scenario | Behavior |
 |---|---|
 | Remote name held, different target | NameConflict; leave remote share |
+| UpdateShareName 401 | NameConflict (another account owns the name); requeue 2m, **nil** reconcile error |
 | Two CRs same reserved name | NameConflict on the second; delete of one does not DeleteShareName |
 | Remote name held, same target, agent empty | Unshare ours + recreate (only if no other CR claims the name) |
 | Status token set, agent restarted | Heal Unshare our token + recreate (reserved keeps name) |

@@ -61,11 +61,12 @@ sequenceDiagram
 | Scenario | Behavior |
 |---|---|
 | Enable succeeds, Secret Create fails | Disable orphan envZID |
-| Agent not Ready | Ready=False; keep reconciling |
+| Agent not Ready | Ready=False `WaitingForAgent`; requeue 10s (Deployment NotFound after Create is this path, not a reconcile error) |
 | Shares still present on Env delete | Block; event `SharesExist` |
 | `reclaimPolicy=Retain` | Skip Disable; leave remote env |
 | kube-system GET fails and `spec.uniqueID` empty | EnableError; set `spec.uniqueID` or fix RBAC |
 | PVC already has stale identity | Seed init repairs `identities/environment.json` |
+| PVC/Service/Deployment Create AlreadyExists | Ignore (two reconciles racing Get-miss) |
 
 ## Known Issues & Tech Debt
 

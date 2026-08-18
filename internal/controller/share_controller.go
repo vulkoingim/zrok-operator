@@ -159,6 +159,13 @@ func (r *ZrokShareReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	if err := r.ensureReservedName(ctx, share, apiEndpoint, token); err != nil {
+		if zrokclient.IsUnauthorized(err) {
+			msg := fmt.Sprintf(
+				"reserved name %q is owned by another zrok account; pick a different nameSelection.name",
+				reservedFrontendName(share),
+			)
+			return r.setNameConflict(ctx, share, msg)
+		}
 		return ctrl.Result{}, err
 	}
 
@@ -331,6 +338,9 @@ func (r *ZrokShareReconciler) ensureReservedName(
 		return err
 	}
 	if err := r.Zrok.REST.UpdateShareName(ctx, apiEndpoint, enableToken, ns, name, true); err != nil {
+		if zrokclient.IsUnauthorized(err) {
+			return err
+		}
 		_ = status.PatchStatus(ctx, r.Client, share, func() error {
 			share.Status.ObservedGeneration = share.Generation
 			status.SetCondition(&share.Status.Conditions, zrokv1alpha1.ConditionNameReady, metav1.ConditionFalse, "ReserveError", err.Error(), share.Generation)

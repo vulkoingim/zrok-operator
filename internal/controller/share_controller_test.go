@@ -2,6 +2,8 @@ package controller
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	"github.com/openziti/zrok/v2/agent/agentGrpc"
 	"github.com/stretchr/testify/mock"
@@ -186,6 +188,54 @@ var _ = Describe("ZrokShare Controller", func() {
 				}
 			}
 			Expect(cond.Reason).To(Equal("NameConflict"))
+		})
+
+		It("maps UpdateShareName 401 to NameConflict without a reconcile error", func() {
+			restMock := zrokclientmock.NewRESTClient(GinkgoT())
+			agentMock := zrokclientmock.NewAgentClient(GinkgoT())
+
+			restMock.EXPECT().
+				ListShares(mock.Anything, mock.Anything, mock.Anything, "envzid").
+				Return(nil, nil)
+			restMock.EXPECT().
+				CreateShareName(mock.Anything, mock.Anything, mock.Anything, mock.Anything, "demo").
+				Return(nil)
+			restMock.EXPECT().
+				UpdateShareName(mock.Anything, mock.Anything, mock.Anything, mock.Anything, "demo", true).
+				Return(fmt.Errorf("update share name: [PATCH /share/name][401] updateShareNameUnauthorized"))
+			agentMock.EXPECT().
+				Status(mock.Anything, mock.Anything).
+				Return(&agentGrpc.StatusResponse{}, nil).
+				Maybe()
+
+			r := &ZrokShareReconciler{
+				Client:   k8sClient,
+				Scheme:   k8sClient.Scheme(),
+				Recorder: events.NewFakeRecorder(10),
+				Zrok:     &zrokclient.Clients{REST: restMock, Agent: agentMock},
+			}
+
+			_, err := r.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: shareName, Namespace: ns},
+			})
+			Expect(err).NotTo(HaveOccurred())
+			res, err := r.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: shareName, Namespace: ns},
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.RequeueAfter).To(Equal(2 * time.Minute))
+
+			share := &zrokv1alpha1.ZrokShare{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: shareName, Namespace: ns}, share)).To(Succeed())
+			Expect(status.IsTrue(share.Status.Conditions, zrokv1alpha1.ConditionReady)).To(BeFalse())
+			cond := metav1.Condition{}
+			for _, c := range share.Status.Conditions {
+				if c.Type == zrokv1alpha1.ConditionReady {
+					cond = c
+				}
+			}
+			Expect(cond.Reason).To(Equal("NameConflict"))
+			Expect(cond.Message).To(ContainSubstring("owned by another zrok account"))
 		})
 
 		It("unshares our remote share when the agent is empty then recreates", func() {

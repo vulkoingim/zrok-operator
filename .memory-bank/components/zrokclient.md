@@ -3,7 +3,7 @@
 - **Location**: `internal/zrokclient/` (`client.go`, `agent_grpc.go`, `mock/`)
 - **Purpose**: Typed clients for zrok controller REST API and zrok2 agent gRPC
 - **Owner**: Environment, Share, Access reconcilers
-- **Last analysed**: 2026-08-13
+- **Last analysed**: 2026-08-18
 
 ## Data Flow Diagram
 
@@ -57,10 +57,11 @@ Helpers: `NewDefaultClients`, `RemoteShare`, `TargetsEqual`, `FindByFrontendName
 
 - `CreateShareName`: 409 / already → **nil**
 - `DeleteShareName` / `Unshare`: 404 → **nil**
+- `UpdateShareName` 401: caller maps to NameConflict (`zrokclient.IsUnauthorized`) — name owned by another account (CreateShareName 409 is swallowed first)
 
 ## Error Handling
 
-Callers interpret SharePublic errors (409) at controller layer. REST methods wrap HTTP status in returned errors for non-special cases.
+Callers interpret SharePublic errors (409) at controller layer. REST methods wrap HTTP status in returned errors for non-special cases. `IsUnauthorized` matches `[401]` / `updateShareNameUnauthorized`.
 
 ## Testing
 
@@ -73,7 +74,7 @@ Callers interpret SharePublic errors (409) at controller layer. REST methods wra
 | Symptom | Cause |
 |---|---|
 | Dial fail :7777 | Agent/socat not Ready; wrong Service DNS |
-| 401/403 REST | Wrong enable/account token in Secret |
+| 401/403 REST | Wrong enable/account token in Secret, **or** UpdateShareName 401 because another account owns the reserved name |
 | FindShare miss | Endpoint string format ≠ name matcher; use ListShares + Target
 
 ## References

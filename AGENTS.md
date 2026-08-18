@@ -83,8 +83,8 @@ Mocks: edit `.mockery.yml` → `mise run gen` (or `mise run gen:mocks`). **Never
 
 1. **Agent registry wipe is intentional.** Every agent start deletes `agent-registry.json` + `agent.socket`. Operator owns share lifecycle — do not "fix" by persisting the registry.
 2. **Reserved names for sticky URLs.** Ephemeral public shares die on agent restart. Prefer `nameSelection` / `agent.ManagedFrontendName` → `ko-<ns>-<share>`.
-3. **Always promote reserved:** `CreateShareName` then `UpdateShareName(..., reserved=true)`. CreateShareName 409 = name already exists (treat as OK).
-4. **Share ownership is three-way.** Inventory remote `ListShares` + agent Status + CR. Adopt / Unshare only if **target matches** `spec.upstream`. Reserved name held by a different target **or another ZrokShare** → `Ready=False` reason `NameConflict`, **do not Unshare**. Ours remotely + agent empty (registry wipe) → Unshare **our** token then SharePublic.
+3. **Always promote reserved:** `CreateShareName` then `UpdateShareName(..., reserved=true)`. CreateShareName 409 = name already exists (treat as OK). UpdateShareName **401** = another account owns the name → `NameConflict`, do **not** return a reconcile error (that storms retries).
+4. **Share ownership is three-way.** Inventory remote `ListShares` + agent Status + CR. Adopt / Unshare only if **target matches** `spec.upstream`. Reserved name held by a different target **or another ZrokShare** **or another zrok account** → `Ready=False` reason `NameConflict`, **do not Unshare**. Ours remotely + agent empty (registry wipe) → Unshare **our** token then SharePublic.
 5. **`nameSelection` only with `shareMode=public`.** `privateShareToken` only with `private`.
 6. **Agent replicas must be 1** (Recreate strategy). Manager talks to agent via **gRPC** through socat TCP→unix (`AgentDialAddr`), not HTTP `/v1/agent/*` (README is stale on that point).
 7. **Do not hand-write mocks.** Interfaces in `.mockery.yml` → `mise run gen`.

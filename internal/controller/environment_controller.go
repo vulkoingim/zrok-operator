@@ -383,7 +383,7 @@ func (r *ZrokEnvironmentReconciler) ensurePVC(ctx context.Context, env *zrokv1al
 	existing := &corev1.PersistentVolumeClaim{}
 	err := r.Get(ctx, client.ObjectKeyFromObject(desired), existing)
 	if apierrors.IsNotFound(err) {
-		return r.Create(ctx, desired)
+		return ignoreAlreadyExists(r.Create(ctx, desired))
 	}
 	return err
 }
@@ -396,7 +396,7 @@ func (r *ZrokEnvironmentReconciler) ensureService(ctx context.Context, env *zrok
 	existing := &corev1.Service{}
 	err := r.Get(ctx, client.ObjectKeyFromObject(desired), existing)
 	if apierrors.IsNotFound(err) {
-		return r.Create(ctx, desired)
+		return ignoreAlreadyExists(r.Create(ctx, desired))
 	}
 	if err != nil {
 		return err
@@ -418,7 +418,7 @@ func (r *ZrokEnvironmentReconciler) ensureDeployment(ctx context.Context, env *z
 	existing := &appsv1.Deployment{}
 	err := r.Get(ctx, client.ObjectKeyFromObject(desired), existing)
 	if apierrors.IsNotFound(err) {
-		return r.Create(ctx, desired)
+		return ignoreAlreadyExists(r.Create(ctx, desired))
 	}
 	if err != nil {
 		return err
@@ -435,9 +435,20 @@ func (r *ZrokEnvironmentReconciler) ensureDeployment(ctx context.Context, env *z
 func (r *ZrokEnvironmentReconciler) isAgentReady(ctx context.Context, env *zrokv1alpha1.ZrokEnvironment) (bool, error) {
 	dep := &appsv1.Deployment{}
 	if err := r.Get(ctx, types.NamespacedName{Name: agent.DeploymentName(env), Namespace: env.Namespace}, dep); err != nil {
+		// Cache can lag the Create in ensureDeployment; missing deploy is "not ready", not a reconcile error.
+		if apierrors.IsNotFound(err) {
+			return false, nil
+		}
 		return false, err
 	}
 	return dep.Status.ReadyReplicas >= 1 && dep.Status.UpdatedReplicas >= 1, nil
+}
+
+func ignoreAlreadyExists(err error) error {
+	if apierrors.IsAlreadyExists(err) {
+		return nil
+	}
+	return err
 }
 
 func (r *ZrokEnvironmentReconciler) setNotReady(ctx context.Context, env *zrokv1alpha1.ZrokEnvironment, reason, message string) error {

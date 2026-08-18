@@ -1,6 +1,10 @@
 package zrokclient
 
-import "testing"
+import (
+	"errors"
+	"fmt"
+	"testing"
+)
 
 func TestTargetsEqual(t *testing.T) {
 	t.Parallel()
@@ -47,5 +51,31 @@ func TestFrontendEndpointMatchesName(t *testing.T) {
 	}
 	if FrontendEndpointMatchesName("https://xdemo.share.zrok.io", "demo") {
 		t.Fatal("must not match suffix")
+	}
+}
+
+func TestIsUnauthorized(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "nil", err: nil, want: false},
+		{name: "other", err: errors.New("create share name: 409"), want: false},
+		{
+			name: "wrapped 401",
+			err:  fmt.Errorf("update share name: %w", errors.New("[PATCH /share/name][401] updateShareNameUnauthorized")),
+			want: true,
+		},
+		{name: "swagger type only", err: errors.New("updateShareNameUnauthorized"), want: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := IsUnauthorized(tc.err); got != tc.want {
+				t.Fatalf("IsUnauthorized(%v) = %v, want %v", tc.err, got, tc.want)
+			}
+		})
 	}
 }

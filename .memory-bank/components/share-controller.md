@@ -3,7 +3,7 @@
 - **Location**: `internal/controller/share_controller.go`, `share_inventory.go`
 - **Purpose**: Reconcile `ZrokShare` create/adopt/heal/delete against agent gRPC + controller REST
 - **Owner**: manager (`zrokshare-controller` recorder)
-- **Last analysed**: 2026-08-13
+- **Last analysed**: 2026-08-18
 
 ## Data Flow Diagram
 
@@ -40,6 +40,7 @@ Kubernetes-native share lifecycle so users don’t run `zrok2 share` by hand, an
 | Edge Case | How It's Handled | What Could Go Wrong |
 |-----------|------------------|---------------------|
 | Name held, different target | NameConflict; no Unshare | Old code Unshared blindly |
+| UpdateShareName 401 | NameConflict; requeue 2m | Returning the 401 as reconcile error storms retries |
 | Name held, same target, agent empty | Unshare our token + SharePublic | 409 loop if Unshare fails |
 | SharePublic 409 | Re-inventory; same ownership rules | |
 | Token in status, not in agent | Heal if ours (target or status token) | |
@@ -83,11 +84,11 @@ Reconciler entry: `Reconcile(ctx, req) (Result, error)` via controller-runtime.
 Key internals:
 
 - `loadInventory` / `classifyShare` / `otherShareWithFrontendName` (`share_inventory.go`)
-- `ensureReservedName`: `CreateShareName` + `UpdateShareName(..., true)`
+- `ensureReservedName`: `CreateShareName` + `UpdateShareName(..., true)`; UpdateShareName 401 → `setNameConflict`
 - `releaseOurs` / `handleShareConflict` / `setNameConflict` (transition-only event)
 - Delete: resolve owned token → Release → Unshare → DeleteShareName
 
-Conditions used: `Ready`, `EnvironmentReady`, `ShareCreated`, `NameReady`. Ready reason `NameConflict` when the reserved name is foreign.
+Conditions used: `Ready`, `EnvironmentReady`, `ShareCreated`, `NameReady`. Ready reason `NameConflict` when the reserved name is foreign (other target, other ZrokShare, or other zrok account via UpdateShareName 401).
 
 ## Configuration
 
@@ -98,6 +99,7 @@ Conditions used: `Ready`, `EnvironmentReady`, `ShareCreated`, `NameReady`. Ready
 ## Error Handling & Retries
 
 - REST CreateShareName 409 → nil (idempotent)
+- REST UpdateShareName 401 → NameConflict (not a reconcile error)
 - Unshare/DeleteShareName 404 → nil
 - SharePublic 409 → inventory path, not blind Unshare
 - Reconcile errors → event `ShareError`; metric `zrok_share_reconcile_errors`
@@ -120,7 +122,7 @@ Events: `ShareError`, `ReleaseError`, `Ready`, `NameConflict`, `NameRetained`. L
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Ready=False NameConflict | Reserved name attached to another target | Change nameSelection or free the other share in the UI |
+| Ready=False NameConflict | Reserved name attached to another target, another CR, or another zrok account (UpdateShareName 401) | Change nameSelection or free the name in the zrok UI |
 | 409 name in use loop | Should be gone; check inventory Unshare of **ours** only | |
 | Ready without ShareToken | Status not persisted / race | Check heal path; status update errors |
 | Finalizer stuck | Token unknown + DeleteShareName 409 ours | Discover by target; Unshare; don’t strip finalizer unless last resort |

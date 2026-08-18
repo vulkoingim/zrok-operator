@@ -1,6 +1,6 @@
 # Debugging & Troubleshooting
 
-> **Last Updated:** 2026-08-13
+> **Last Updated:** 2026-08-18
 
 ## Where to look
 
@@ -21,8 +21,15 @@
 
 ### Share Ready=False NameConflict
 
-**Cause:** Reserved frontend name is attached to a remote share whose `target` ≠ `spec.upstream`, and this CR does not own that token.  
-**Fix:** Pick a different `nameSelection`, or unshare the other share in the zrok UI. Operator will not steal it.
+**Cause:** Reserved frontend name is attached to a remote share whose `target` ≠ `spec.upstream`, another ZrokShare already claims the name, **or** `PATCH /share/name` returns 401 (`name.AccountId !=` this enable token — another zrok account owns the name; public frontend names are globally unique). CreateShareName 409 is treated as success, so 401 shows up on the subsequent UpdateShareName.
+
+**Fix:** Pick a different `nameSelection.name`, or unshare/release the name in the zrok UI under the owning account. Operator will not steal it. After the fix, Ready=False NameConflict requeues every 2m (not a reconcile-error storm).
+
+### Env Reconciler error: `Deployment.apps "{env}-agent" not found`
+
+**Cause (fixed):** After Create, `isAgentReady` used to Get from the informer cache and return NotFound as a reconcile error. Missing deploy is now WaitingForAgent.
+
+**If you still see it:** operator image is old; redeploy.
 
 ### Share Ready but empty ShareToken / retry storm
 

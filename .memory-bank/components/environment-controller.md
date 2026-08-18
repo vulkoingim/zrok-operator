@@ -41,6 +41,7 @@ One CR ≈ one zrok environment + one agent data plane for Shares/Accesses in th
 | Enable OK, Secret create fail | Disable orphan envZID |
 | Secret missing, status has EnvZID | Re-enable (Secret is SoT) |
 | Deploy Ready but Agent Status fail | Not Ready |
+| Deployment Get NotFound after Create | WaitingForAgent (informer cache lag); **not** a reconcile error |
 
 ### Invariants
 
@@ -74,6 +75,8 @@ Share + Access reconcilers require Env Ready. Ingress defaults EnvironmentRef to
 
 Events: `SecretError`, `EnableError`, `Ready`, `SharesExist`, `DisableError`, `Disabled`, `Enabled`.
 
+Missing agent Deployment after Create → Ready=False `WaitingForAgent`, requeue 10s (cache can lag Create). Create AlreadyExists on PVC/Service/Deployment is ignored.
+
 ## Testing
 
 Controller envtest + unit coverage in `internal/controller/` (env-focused tests as present).
@@ -83,6 +86,7 @@ Controller envtest + unit coverage in `internal/controller/` (env-focused tests 
 | Symptom | Fix |
 |---|---|
 | Env never Ready | Check identity Secret, agent logs, gRPC Status via :7777 |
+| `Deployment.apps "{env}-agent" not found` as Reconciler error | Should be gone; Get NotFound is WaitingForAgent |
 | Delete stuck SharesExist | Delete Shares first |
 | Seed missing environment.json | Ensure seed init path deployed |
 
