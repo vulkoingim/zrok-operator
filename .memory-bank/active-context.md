@@ -50,4 +50,4 @@
 
 - No `/update-memory` slash command yet — process documented in [documentation-maintenance.md](documentation-maintenance.md)
 - README agent transport docs still stale
-- E2E live-share path needs `ZROK2_ENABLE_TOKEN`
+- E2E live-share uses repo secret `ZROK2_ENABLE_TOKEN` on main / merge queue / dispatch (not PRs). Empty/missing → Skip.
