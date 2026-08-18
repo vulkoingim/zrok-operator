@@ -56,13 +56,47 @@ func FrontendEndpointMatchesName(endpoint, name string) bool {
 	if endpoint == "" || name == "" {
 		return false
 	}
-	host := strings.ToLower(endpoint)
+	host := frontendHost(endpoint)
+	return strings.HasPrefix(host, strings.ToLower(name)+".")
+}
+
+// FrontendNameFromEndpoint returns the reserved-name DNS label (the part before
+// `.shares.zrok.io`). Empty if endpoint is empty or has no host.
+func FrontendNameFromEndpoint(endpoint string) string {
+	host := frontendHost(endpoint)
+	if host == "" {
+		return ""
+	}
+	if i := strings.IndexByte(host, '.'); i > 0 {
+		return host[:i]
+	}
+	return host
+}
+
+// FrontendNameFromEndpoints returns the first parseable frontend name.
+func FrontendNameFromEndpoints(endpoints []string) string {
+	for _, ep := range endpoints {
+		if n := FrontendNameFromEndpoint(ep); n != "" {
+			return n
+		}
+	}
+	return ""
+}
+
+func frontendHost(endpoint string) string {
+	host := strings.ToLower(strings.TrimSpace(endpoint))
 	host = strings.TrimPrefix(host, "https://")
 	host = strings.TrimPrefix(host, "http://")
 	if i := strings.IndexByte(host, '/'); i >= 0 {
 		host = host[:i]
 	}
-	return strings.HasPrefix(host, strings.ToLower(name)+".")
+	if i := strings.IndexByte(host, ':'); i >= 0 {
+		// port on a hostname (not IPv6)
+		if !strings.Contains(host, "]") {
+			host = host[:i]
+		}
+	}
+	return host
 }
 
 // TargetsEqual reports whether two upstream/target URLs refer to the same backend.
@@ -82,9 +116,9 @@ func normalizeTarget(s string) string {
 	u.Scheme = strings.ToLower(u.Scheme)
 	host := strings.ToLower(u.Host)
 	switch {
-	case u.Scheme == "http" && strings.HasSuffix(host, ":80"):
+	case u.Scheme == schemeHTTP && strings.HasSuffix(host, ":80"):
 		host = strings.TrimSuffix(host, ":80")
-	case u.Scheme == "https" && strings.HasSuffix(host, ":443"):
+	case u.Scheme == schemeHTTPS && strings.HasSuffix(host, ":443"):
 		host = strings.TrimSuffix(host, ":443")
 	}
 	u.Host = host

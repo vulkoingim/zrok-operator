@@ -52,6 +52,26 @@ func TestFrontendEndpointMatchesName(t *testing.T) {
 	if FrontendEndpointMatchesName("https://xdemo.share.zrok.io", "demo") {
 		t.Fatal("must not match suffix")
 	}
+	if FrontendEndpointMatchesName("https://ko-default-nginx-aaaaoaa.shares.zrok.io", "ko-default-nginx-aaaaoaaaaa") {
+		t.Fatal("old shorter hostname must not match the new name")
+	}
+}
+
+func TestFrontendNameFromEndpoint(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		in, want string
+	}{
+		{"https://ko-default-nginx-aaaaoaa.shares.zrok.io", "ko-default-nginx-aaaaoaa"},
+		{"http://demo.share.zrok.io/path", "demo"},
+		{"demo.shares.zrok.io", "demo"},
+		{"", ""},
+	}
+	for _, tc := range cases {
+		if got := FrontendNameFromEndpoint(tc.in); got != tc.want {
+			t.Errorf("FrontendNameFromEndpoint(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
 }
 
 func TestIsUnauthorized(t *testing.T) {
@@ -69,6 +89,11 @@ func TestIsUnauthorized(t *testing.T) {
 			want: true,
 		},
 		{name: "swagger type only", err: errors.New("updateShareNameUnauthorized"), want: true},
+		{
+			name: "delete 401",
+			err:  fmt.Errorf("delete share name: %w", errors.New("[DELETE /share/name][401] deleteShareNameUnauthorized")),
+			want: true,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

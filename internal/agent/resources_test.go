@@ -84,7 +84,7 @@ func TestShareLabels(t *testing.T) {
 	if got[LabelFrontendName] != "demo" {
 		t.Fatalf("frontend label: %v", got)
 	}
-	if got["app.kubernetes.io/managed-by"] != "zrok-operator" {
+	if got[LabelK8sManagedBy] != "zrok-operator" {
 		t.Fatalf("managed-by: %v", got)
 	}
 }

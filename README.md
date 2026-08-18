@@ -168,7 +168,7 @@ mise run gen                 # deepcopy + CRDs + helm crds/
 mise run test                # unit + envtest via gotestsum
 mise run build               # bin/manager
 mise run kind:up && mise run deploy
-mise run test-e2e            # Kind e2e; set ZROK2_ENABLE_TOKEN for live share
+mise run test:e2e            # Kind e2e; set ZROK2_ENABLE_TOKEN for live share
 mise run samples --secret    # apply sample CRs (creates secret from env)
 ```
 

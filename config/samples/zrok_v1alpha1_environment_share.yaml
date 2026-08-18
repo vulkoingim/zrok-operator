@@ -26,7 +26,7 @@ spec:
 apiVersion: zrok.k8s.zrok.io/v1alpha1
 kind: ZrokShare
 metadata:
-  name: nginx-reserved
+  name: d1592fdb60580fe884c3e43946d9
   namespace: default
 spec:
   environmentRef:

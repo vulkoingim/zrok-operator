@@ -50,21 +50,15 @@ vet: ## go vet
 
 .PHONY: test
 test: gen fmt vet ## Unit + envtest (excludes e2e)
-	@ROOT="$(ROOT)" BIN_DIR="$(ROOT)/bin" bash -ec '\
-	  ASSETS="$$(setup-envtest use 1.36 --bin-dir "$$BIN_DIR" -p path)"; \
-	  KUBEBUILDER_ASSETS="$$ASSETS" gotestsum --format testdox -- \
-	    $$(go list ./... | grep -v /e2e) -coverprofile cover.out'
+	$(TASKS)/test/_default
 
 .PHONY: test-verbose
 test-verbose: gen ## Verbose unit + envtest
-	@ROOT="$(ROOT)" BIN_DIR="$(ROOT)/bin" bash -ec '\
-	  ASSETS="$$(setup-envtest use 1.36 --bin-dir "$$BIN_DIR" -p path)"; \
-	  KUBEBUILDER_ASSETS="$$ASSETS" gotestsum --format standard-verbose -- \
-	    $$(go list ./... | grep -v /e2e) -coverprofile cover.out'
+	$(TASKS)/test/verbose
 
 .PHONY: test-e2e
 test-e2e: ## Kind e2e (set ZROK2_ENABLE_TOKEN for live share)
-	IMG="$(IMG)" $(TASKS)/test-e2e
+	IMG="$(IMG)" $(TASKS)/test/e2e
 
 .PHONY: lint
 lint: ## golangci-lint

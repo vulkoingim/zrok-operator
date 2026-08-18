@@ -44,7 +44,7 @@ type AgentClient interface {
 }
 ```
 
-Helpers: `NewDefaultClients(httpClient, allowedAPIHosts)`, `NewSecureHTTPClient`, `ValidateAPIEndpoint`, `NormalizeAPIHosts`, `RemoteShare`, `TargetsEqual`, `FindByFrontendName` / `FindByToken`, `FrontendEndpointMatchesName`, `PersistEnabledEnvironment` (test helper). `api-v2.zrok.io` is always allowlisted. `EndpointNotAllowedError` / `IsEndpointNotAllowed`.
+Helpers: `NewDefaultClients(httpClient, allowedAPIHosts)`, `NewSecureHTTPClient`, `ValidateAPIEndpoint`, `NormalizeAPIHosts`, `RemoteShare`, `TargetsEqual`, `FindByFrontendName` / `FindByToken`, `FrontendEndpointMatchesName`, `FrontendNameFromEndpoint`, `PersistEnabledEnvironment` (test helper). `api-v2.zrok.io` is always allowlisted. `EndpointNotAllowedError` / `IsEndpointNotAllowed`.
 
 ## Protocol details
 
@@ -57,11 +57,11 @@ Helpers: `NewDefaultClients(httpClient, allowedAPIHosts)`, `NewSecureHTTPClient`
 
 - `CreateShareName`: 409 / already → **nil**
 - `DeleteShareName` / `Unshare`: 404 → **nil**
-- `UpdateShareName` 401: caller maps to NameConflict (`zrokclient.IsUnauthorized`) — name owned by another account (CreateShareName 409 is swallowed first)
+- `UpdateShareName` / `DeleteShareName` 401: caller maps via `zrokclient.IsUnauthorized` — name owned by another account **or** bad token (CreateShareName 409 is swallowed first). Delete path: NameRetained + drop finalizer.
 
 ## Error Handling
 
-Callers interpret SharePublic errors (409) at controller layer. REST methods wrap HTTP status in returned errors for non-special cases. `IsUnauthorized` matches `[401]` / `updateShareNameUnauthorized`.
+Callers interpret SharePublic errors (409) at controller layer. REST methods wrap HTTP status in returned errors for non-special cases. `IsUnauthorized` matches `[401]` / `updateShareNameUnauthorized` / `deleteShareNameUnauthorized`.
 
 ## Testing
 

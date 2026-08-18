@@ -28,7 +28,7 @@ sequenceDiagram
 | Rule | Implementation |
 |------|----------------|
 | Env must be Ready | Same gate as Share; Watches Env via field index |
-| Create / heal | Store AccessToken; verify via Agent Status; recreate if gone |
+| Create / heal | Store AccessToken; verify via Agent Status; recreate if gone, **or** if `spec.shareToken` / non-ephemeral `bindAddress` drifted |
 | FrontendEndpoint | Prefer AccessDetail.BindAddress; fall back to frontend token |
 | Finalizer cleanup | `zrok.k8s.zrok.io/access` → ReleaseAccess |
 
@@ -42,6 +42,7 @@ sequenceDiagram
 | Edge Case | Notes |
 |-----------|-------|
 | Agent registry wipe | Status miss → heal: clear token + AccessPrivate again |
+| `shareToken` / explicit bind change | ReleaseAccess + AccessPrivate with new spec (`:0` bind is not compared to the assigned port) |
 | Env not Ready | Requeue 10s; Env watch enqueues Access when Env Ready |
 | Status unreachable | Keep token; requeue 2m and retry |
 

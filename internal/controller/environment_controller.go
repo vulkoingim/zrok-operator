@@ -243,7 +243,7 @@ func (r *ZrokEnvironmentReconciler) reconcileDelete(ctx context.Context, env *zr
 		if err := r.Zrok.REST.Disable(ctx, api, token, env.Status.EnvZID); err != nil {
 			log.FromContext(ctx).Error(err, "disable environment failed; will retry")
 			r.Recorder.Eventf(env, nil, corev1.EventTypeWarning, "DisableError", "Error", "%s", err.Error())
-			return ctrl.Result{RequeueAfter: 10 * time.Second}, err
+			return ctrl.Result{}, err
 		}
 		r.Recorder.Eventf(env, nil, corev1.EventTypeNormal, "Disabled", "Disable", "disabled remote environment %s", env.Status.EnvZID)
 	}
@@ -482,8 +482,8 @@ func (r *ZrokEnvironmentReconciler) ensureNetworkPolicy(ctx context.Context, env
 		return client.IgnoreNotFound(r.Delete(ctx, existing))
 	}
 	desired := agent.DesiredNetworkPolicy(env, r.ManagerNamespace, r.ManagerAppName)
-	if err := controllerutil.SetControllerReference(env, desired, r.Scheme); err != nil {
-		return err
+	if refErr := controllerutil.SetControllerReference(env, desired, r.Scheme); refErr != nil {
+		return refErr
 	}
 	if apierrors.IsNotFound(err) {
 		return ignoreAlreadyExists(r.Create(ctx, desired))

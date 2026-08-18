@@ -1,10 +1,11 @@
 package agent
 
 import (
+	"k8s.io/apimachinery/pkg/util/intstr"
+
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/intstr"
 
 	zrokv1alpha1 "github.com/vulkoingim/zrok-operator/api/v1alpha1"
 )
@@ -50,7 +51,7 @@ func DesiredNetworkPolicy(env *zrokv1alpha1.ZrokEnvironment, managerNamespace, m
 						MatchLabels: map[string]string{NamespaceNameLabel: managerNamespace},
 					},
 					PodSelector: &metav1.LabelSelector{
-						MatchLabels: map[string]string{"app.kubernetes.io/name": managerAppName},
+						MatchLabels: map[string]string{LabelK8sName: managerAppName},
 					},
 				}},
 			}},

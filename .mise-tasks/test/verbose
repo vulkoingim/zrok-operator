@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+#MISE description="Verbose unit + envtest"
+#MISE depends=["gen"]
+set -euo pipefail
+ROOT="$(git rev-parse --show-toplevel)"
+BIN_DIR="$ROOT/bin"
+ASSETS="$(setup-envtest use "{{vars.ENVTEST_K8S_VERSION}}" --bin-dir "$BIN_DIR" -p path)"
+KUBEBUILDER_ASSETS="$ASSETS" gotestsum --format standard-verbose -- \
+  $(go list ./... | grep -v /e2e) -coverprofile cover.out

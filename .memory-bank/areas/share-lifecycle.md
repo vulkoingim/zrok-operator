@@ -1,6 +1,6 @@
 # Area: Share Lifecycle
 
-> **Last Updated:** 2026-08-18
+> **Last Updated:** 2026-08-18 (nameSelection rename)
 
 ## Overview
 
@@ -19,7 +19,9 @@ flowchart TD
   validate -->|yes| inv[ListShares + agent Status]
   inv --> cls{Classify}
   cls -->|name held, different target, not our token| conflict[Ready=False NameConflict — do not Unshare]
-  cls -->|agent active + target match| ready[Adopt / Ready]
+  cls -->|agent active + target + frontend name match| ready[Adopt / Ready]
+  cls -->|ours, nameSelection changed| rename[Unshare ours + DeleteShareName old]
+  rename --> reserve
   cls -->|ours remotely, agent miss| rebind[Unshare our token]
   cls -->|missing| reserve[CreateShareName + reserved=true]
   rebind --> reserve
@@ -53,7 +55,7 @@ Invalid: `nameSelection` with private; `privateShareToken` with public.
 ### Create / adopt
 
 - Prefer reserved name convention `ko-<k8s-ns>-<share-name>` (`agent.ManagedFrontendName`)
-- Adopt **active** agent share only if frontend name matches **and** backend target matches
+- Adopt **active** agent share only if frontend name matches `spec.nameSelection.name` **and** backend target matches **and** shareMode/backendMode/closed match. Annotation `zrok.k8s.zrok.io/applied-digest` covers oauth/basicAuth/insecure/accessGrants (empty digest = upgrade; stamp, don't rebuild)
 - Name held remotely, **same target**, agent empty → Unshare **our** token (reserved name stays) → SharePublic (registry-wipe heal)
 - Name held remotely, **different target**, CR does not own that token → `NameConflict`, **never Unshare**
 - Another `ZrokShare` already claims the same `nameSelection` (any namespace) → `NameConflict`, **never Unshare**
@@ -66,11 +68,21 @@ Invalid: `nameSelection` with private; `privateShareToken` with public.
 
 Spec.upstream change on **our** status token (target drifted) → Release + Unshare our token → recreate. Persist status clear.
 
+`spec.nameSelection.name` change (the DNS label before `.shares.zrok.io`, not the FQDN): do **not** adopt the old token even if target still matches. Sequence:
+
+1. `CreateShareName` + `UpdateShareName(reserved=true)` on the **new** name first (401 → NameConflict, old share stays)
+2. Release + Unshare **our** token
+3. `DeleteShareName` the **old** label unless `reclaimPolicy=Retain` (409 still-attached → requeue 3s; annot `zrok.k8s.zrok.io/reclaim-name`)
+4. SharePublic with new `NameSelections`
+5. Event `ShareRenamed`; `status.assignedURL` becomes `https://<new>.shares.zrok.io`
+
+Same rebuild for shareMode / backendMode / closed / privateShareToken drift (visible on agent `ShareDetail`) and for oauth / basicAuth / insecure / accessGrants via applied-digest. `reclaimPolicy` is not in the digest.
+
 ### Delete (finalizer `zrok.k8s.zrok.io/share`)
 
 1. Resolve token: status → agent name+target → ListShares name+target
 2. Unshare **only** if `isOurShareToken` (status token, or remote/agent target match)
-3. If reclaim Delete + reserved name: `DeleteShareName`; 409 still attached → Unshare only if ours, else leave name (`NameRetained` event) and drop finalizer
+3. If reclaim Delete + reserved name: `DeleteShareName`; 409 still attached → Unshare only if ours, else leave name (`NameRetained`); **401** → `NameRetained`, drop finalizer (do not retry as error). Missing/empty enable-token Secret → skip REST, still drop finalizer.
 4. Remove finalizer
 
 Does **not** Own K8s children. Watches Environments → map to Shares (`mapEnvToShares`). Stamps `agent.ShareLabels` on the CR.
@@ -78,7 +90,7 @@ Does **not** Own K8s children. Watches Environments → map to Shares (`mapEnvTo
 ## Business Rules
 
 1. CreateShareName **409/already = success**; always promote with UpdateShareName(reserved=true) — skipped on NameConflict. UpdateShareName **401** → NameConflict (name owned by another zrok account; public frontend names are globally unique)
-2. Only adopt **active** agent shares whose backend matches `spec.upstream`
+2. Only adopt **active** agent shares whose backend matches `spec.upstream` and whose frontend name matches `spec.nameSelection.name`
 3. Never Unshare a reserved-name holder with a different target unless the CR already owns that token
 4. Operator owns lifecycle; agent registry wiped on restart
 5. Requeue Ready every 2m for drift; NameConflict requeues 2m
@@ -98,6 +110,9 @@ Does **not** Own K8s children. Watches Environments → map to Shares (`mapEnvTo
 | Delete without ShareToken | Discover token by name+target only if no other CR claims the name |
 | DeleteShareName 409 attached to foreign share | Leave name; event NameRetained |
 | Ephemeral after agent restart | Share gone; reconcile creates new random name |
+| `nameSelection.name` edited | Rebuild ours; delete old reserved name unless Retain |
+| New name UpdateShareName 401 | NameConflict; old live share untouched |
+| oauth / basicAuth secret rotation | Digest mismatch → same rebuild (no name delete) |
 
 ## Known Issues & Tech Debt
 

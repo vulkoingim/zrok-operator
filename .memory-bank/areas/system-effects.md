@@ -1,6 +1,6 @@
 # System Effects & Data Strategy
 
-> **Last Updated:** 2026-08-13
+> **Last Updated:** 2026-08-18
 
 ## Data Flywheel
 
@@ -25,7 +25,7 @@ Agent restarts force re-create of shares → reserved names + operator heal clos
 | Env reconciler | Enable + agent | Identity Secret + PVC | Shares/Access | Critical |
 | Agent start | Run zrok2 | Wipes registry | Prevents 409 vs operator | Critical |
 | Share reconciler | SharePublic | Remote name reservation + live share | Users / Ingress | Critical |
-| Share heal | Repair drift | REST Unshare **our** token (target match) | Clears 409 without stealing foreign names | High |
+| Share heal | Repair drift (upstream **or** reserved name **or** other live spec) | REST Unshare **our** token (target match); DeleteShareName old label on rename | Clears 409 without stealing foreign names | High |
 | Ingress reconciler | Translate Ingress | Creates ZrokShare | Ingress users | Medium |
 | Env delete | Disable | Destroys remote env | Cleanup | High (blocked by Shares) |
 

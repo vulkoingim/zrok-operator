@@ -36,8 +36,8 @@ func validateShareUpstream(rawURL, namespace string) error {
 		"." + ns,
 	}
 	for _, suf := range suffixes {
-		if strings.HasSuffix(host, suf) {
-			name := strings.TrimSuffix(host, suf)
+		if before, ok := strings.CutSuffix(host, suf); ok {
+			name := before
 			if isDNSLabel(name) {
 				return nil
 			}

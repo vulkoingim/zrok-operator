@@ -8,7 +8,7 @@
 |---|---|---|
 | Unit / envtest | `internal/...` (exclude e2e) | `mise run test` |
 | Agent helpers | `internal/agent/*_test.go` | included in `mise run test` |
-| E2E Kind | `test/e2e/` | Manager pod Running + HTTPS `/metrics` scrape + optional live share (`ZROK2_ENABLE_TOKEN`). Live share is nested in the Manager Ordered container so it runs **before** AfterAll undeploy. Sample path is repo-root `config/samples/...` (`utils.Run` cds to project root). `mise run test-e2e`. CI: merge queue / `main` / dispatch — **not** every PR. |
+| E2E Kind | `test/e2e/` | Manager pod Running + HTTPS `/metrics` scrape + optional live share (`ZROK2_ENABLE_TOKEN`). Live share is nested in the Manager Ordered container so it runs **before** AfterAll undeploy. Sample path is repo-root `config/samples/...` (`utils.Run` cds to project root). Share name is `d1592fdb60580fe884c3e43946d9`. Sample Secret is a placeholder — e2e recreates `zrok-credentials` **after** apply. `mise run test:e2e`. CI: merge queue / `main` / dispatch — **not** every PR. |
 
 ## Mocks (mandatory)
 
@@ -22,7 +22,7 @@
 ## Patterns
 
 - Controller suite: Ginkgo + envtest (`internal/controller/suite_test.go`)
-- Share tests: inject mockery clients (`share_controller_test.go`)
+- Share tests: inject mockery clients (`share_controller_test.go`); name drift in `share_apply_test.go`
 - Prefer table-driven / logical modules; fix failing suite before next module
 
 ## Agents must NOT

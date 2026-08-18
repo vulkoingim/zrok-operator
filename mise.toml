@@ -46,32 +46,6 @@ description = "generate + manifests + mocks + sync Helm CRDs"
 depends = ["generate", "manifests", "mocks"]
 run = "cp config/crd/bases/*.yaml charts/zrok-operator/crds/"
 
-[tasks.test]
-description = "Unit + envtest (excludes e2e)"
-depends = ["gen", "fmt"]
-run = '''
-#!/usr/bin/env bash
-set -euo pipefail
-ROOT="$(git rev-parse --show-toplevel)"
-BIN_DIR="$ROOT/bin"
-ASSETS="$(setup-envtest use "{{vars.ENVTEST_K8S_VERSION}}" --bin-dir "$BIN_DIR" -p path)"
-KUBEBUILDER_ASSETS="$ASSETS" gotestsum --format testdox -- \
-  $(go list ./... | grep -v /e2e) -coverprofile cover.out
-'''
-
-[tasks.test-verbose]
-description = "Verbose unit + envtest"
-depends = ["gen"]
-run = '''
-#!/usr/bin/env bash
-set -euo pipefail
-ROOT="$(git rev-parse --show-toplevel)"
-BIN_DIR="$ROOT/bin"
-ASSETS="$(setup-envtest use "{{vars.ENVTEST_K8S_VERSION}}" --bin-dir "$BIN_DIR" -p path)"
-KUBEBUILDER_ASSETS="$ASSETS" gotestsum --format standard-verbose -- \
-  $(go list ./... | grep -v /e2e) -coverprofile cover.out
-'''
-
 [tasks.lint]
 description = "golangci-lint --fix"
 run = "golangci-lint run --fix"

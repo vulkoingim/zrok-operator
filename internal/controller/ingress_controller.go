@@ -111,6 +111,7 @@ func (r *IngressReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		if name == "" && ing.Spec.Rules[0].Host != "" {
 			name = ing.Spec.Rules[0].Host
 		}
+		name = ingressReservedName(name)
 		if name != "" {
 			nsToken := ing.Annotations[annotationNamespace]
 			if nsToken == "" {
@@ -163,6 +164,27 @@ func (r *IngressReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	return ctrl.Result{}, nil
+}
+
+// ingressReservedName is the DNS label for nameSelection. Ingress Host / the name
+// annotation may be a full frontend FQDN; zrok reserved names are the label before
+// `.shares.zrok.io`.
+func ingressReservedName(raw string) string {
+	raw = strings.TrimSpace(strings.ToLower(raw))
+	if raw == "" {
+		return ""
+	}
+	raw = strings.TrimPrefix(raw, "https://")
+	raw = strings.TrimPrefix(raw, "http://")
+	if i := strings.IndexByte(raw, '/'); i >= 0 {
+		raw = raw[:i]
+	}
+	for _, suffix := range []string{".shares.zrok.io", ".share.zrok.io"} {
+		if before, ok := strings.CutSuffix(raw, suffix); ok {
+			return before
+		}
+	}
+	return raw
 }
 
 // SetupWithManager sets up the controller with the Manager.

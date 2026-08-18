@@ -78,14 +78,18 @@ func TestCheckRedirectDropsTokenAndCrossHost(t *testing.T) {
 	t.Cleanup(origin.Close)
 
 	client := NewSecureHTTPClient()
-	client.Transport = &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}} //nolint:gosec // test-only twin httptest certs
+	client.Transport = &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
 
 	req, err := http.NewRequest(http.MethodGet, origin.URL, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	req.Header.Set("X-TOKEN", "secret-enable-token")
-	_, err = client.Do(req)
+	resp, err := client.Do(req)
+	if resp != nil {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
+	}
 	if err == nil {
 		t.Fatal("expected cross-host redirect to fail")
 	}

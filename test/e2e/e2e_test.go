@@ -250,14 +250,8 @@ var _ = Describe("Manager", Ordered, func() {
 				Skip("ZROK2_ENABLE_TOKEN not set; skipping live zrok e2e")
 			}
 
-			By("creating enable token secret in default namespace")
-			cmd := exec.Command("kubectl", "create", "secret", "generic", "zrok-credentials",
-				"--from-file=enable-token=/dev/stdin", "-n", "default")
-			cmd.Stdin = strings.NewReader(token)
-			_, _ = utils.Run(cmd)
-
 			By("deploying nginx backend")
-			cmd = exec.Command("kubectl", "apply", "-f", "-")
+			cmd := exec.Command("kubectl", "apply", "-f", "-")
 			cmd.Stdin = strings.NewReader(`
 apiVersion: apps/v1
 kind: Deployment
@@ -283,7 +277,7 @@ spec:
 			_, err := utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
 
-			By("applying Environment + Share")
+			By("applying Environment + Share sample")
 			root, err := utils.GetProjectDir()
 			Expect(err).NotTo(HaveOccurred())
 			sample := filepath.Join(root, "config", "samples", "zrok_v1alpha1_environment_share.yaml")
@@ -291,9 +285,32 @@ spec:
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
 
+			By("replacing sample placeholder enable token")
+			cmd = exec.Command("kubectl", "delete", "secret", "zrok-credentials", "-n", "default", "--ignore-not-found")
+			_, _ = utils.Run(cmd)
+			cmd = exec.Command("kubectl", "create", "secret", "generic", "zrok-credentials",
+				"--from-file=enable-token=/dev/stdin", "-n", "default")
+			cmd.Stdin = strings.NewReader(token)
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+
+			DeferCleanup(func() {
+				By("deleting live share before env so the finalizer can use the enable token")
+				cmd := exec.Command("kubectl", "delete", "zrokshare", "", "-n", "default",
+					"--ignore-not-found", "--wait=true", "--timeout=2m")
+				_, _ = utils.Run(cmd)
+				cmd = exec.Command("kubectl", "delete", "zrokenvironment", "default", "-n", "default",
+					"--ignore-not-found", "--wait=true", "--timeout=2m")
+				_, _ = utils.Run(cmd)
+				cmd = exec.Command("kubectl", "delete", "secret", "zrok-credentials", "-n", "default", "--ignore-not-found")
+				_, _ = utils.Run(cmd)
+				cmd = exec.Command("kubectl", "delete", "deploy,svc", "nginx", "-n", "default", "--ignore-not-found")
+				_, _ = utils.Run(cmd)
+			})
+
 			By("waiting for share Ready")
 			Eventually(func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "zrokshare", "nginx", "-n", "default",
+				cmd := exec.Command("kubectl", "get", "zrokshare", "", "-n", "default",
 					"-o", `jsonpath={.status.conditions[?(@.type=="Ready")].status}`)
 				out, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -301,7 +318,7 @@ spec:
 			}).WithTimeout(3 * time.Minute).Should(Succeed())
 
 			By("fetching assigned URL")
-			cmd = exec.Command("kubectl", "get", "zrokshare", "nginx", "-n", "default",
+			cmd = exec.Command("kubectl", "get", "zrokshare", "", "-n", "default",
 				"-o", "jsonpath={.status.assignedURL}")
 			url, err := utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
