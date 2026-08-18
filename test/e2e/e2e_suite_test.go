@@ -30,6 +30,7 @@ func TestE2E(t *testing.T) {
 }
 
 var _ = BeforeSuite(func() {
+	// mise run test:e2e sets SKIP_IMAGE_BUILD and SKIP_KIND_LOAD after kind:load.
 	if os.Getenv("SKIP_IMAGE_BUILD") != "true" {
 		By("building the manager(Operator) image")
 		cmd := exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", projectImage))
@@ -43,7 +44,9 @@ var _ = BeforeSuite(func() {
 	ExpectWithOffset(1, err).NotTo(HaveOccurred(),
 		"image %q is not present in the local docker daemon (docker-build must --load)", projectImage)
 
-	By("loading the manager(Operator) image on Kind")
-	err = utils.LoadImageToKindClusterWithName(projectImage)
-	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to load the manager(Operator) image into Kind")
+	if os.Getenv("SKIP_KIND_LOAD") != "true" {
+		By("loading the manager(Operator) image on Kind")
+		err = utils.LoadImageToKindClusterWithName(projectImage)
+		ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to load the manager(Operator) image into Kind")
+	}
 })

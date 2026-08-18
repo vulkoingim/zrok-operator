@@ -28,7 +28,7 @@ bin/manager -version
 
 ```bash
 mise run kind:up
-mise run kind:deploy   # docker build --load, kind load, deploy
+mise run kind:deploy   # host linux go build, Dockerfile.fast, kind load, deploy
 # Kind needs the tag in the local docker daemon (`--load`). A GHCR push is not required.
 kubectl create secret generic zrok-credentials \
   --from-literal=enable-token="$ZROK2_ENABLE_TOKEN"

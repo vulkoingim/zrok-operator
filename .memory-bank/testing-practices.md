@@ -8,7 +8,7 @@
 |---|---|---|
 | Unit / envtest | `internal/...` (exclude e2e) | `mise run test` |
 | Agent helpers | `internal/agent/*_test.go` | included in `mise run test` |
-| E2E Kind | `test/e2e/` | Deploy manager via `make install`/`deploy`; optional live share when `ZROK2_ENABLE_TOKEN` is set (otherwise Skip). `cleanupLiveZrokTestResources` runs on `DeferCleanup` and in `AfterAll` **before** `make undeploy` (shares → env → nginx/agent orphans). `mise run test:e2e`. CI: merge queue / `main` / dispatch — **not** every PR. |
+| E2E Kind | `test/e2e/` | `kind:load` → host linux cross-compile + `Dockerfile.fast` (one-file context; skips kind import if **image ID** already on the node). Ginkgo `SKIP_IMAGE_BUILD`/`SKIP_KIND_LOAD` after that. Optional live share when `ZROK2_ENABLE_TOKEN` set. `mise run test:e2e` / `make test-e2e`. |
 
 ## Mocks (mandatory)
 
