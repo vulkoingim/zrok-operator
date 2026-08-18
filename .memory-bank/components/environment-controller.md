@@ -13,8 +13,9 @@ flowchart TD
   R -->|Enable/Disable| REST[RESTClient]
   R -->|owns| Secret[Identity Secret]
   R -->|owns| PVC[PVC]
-  R -->|owns| Svc[Service]
+  R -->|owns| Svc[Service ClusterIP :7777]
   R -->|owns| Dep[Deployment]
+  R -->|owns| NP[NetworkPolicy optional]
   R -->|Status| AG[AgentClient]
   Dep --> AgentPod[zrok2 + socat]
 ```
@@ -32,6 +33,9 @@ One CR ≈ one zrok environment + one agent data plane for Shares/Accesses in th
 | Enable before agent | ensureEnabled before DesiredDeployment | Agent starts without identity |
 | Block delete if Shares exist | list Shares by EnvironmentRef | Orphan Shares / broken delete |
 | Replicas ≤ 1 | clamp in DesiredDeployment | Split-brain agents |
+| Identity Secret must be owned | unowned Secret deleted, Enable retried | planted identity skipped Enable |
+| Image / apiEndpoint allowlist | ImageNotAllowed / EndpointNotAllowed, requeue 2m, nil error | SSRF / arbitrary agent image |
+| Service Type ClusterIP | delete+recreate if ExternalName/NodePort | gRPC MITM |
 | Retain skips Disable | reclaimPolicy check | Remote env left on purpose |
 
 ### Critical Edge Cases
@@ -46,7 +50,7 @@ One CR ≈ one zrok environment + one agent data plane for Shares/Accesses in th
 ### Invariants
 
 - Finalizer `zrok.k8s.zrok.io/environment`
-- ControllerReference on Deploy/Service/PVC/Secret
+- ControllerReference on Deploy/Service/PVC/Secret/(NetworkPolicy when enabled)
 - Description `{uniqueID}/zrok-operator/{ns}/{name}` (`spec.uniqueID` or kube-system Namespace UUID)
 
 ## Dependencies
@@ -65,21 +69,22 @@ Share + Access reconcilers require Env Ready. Ingress defaults EnvironmentRef to
 
 ## Configuration
 
-- `spec.apiEndpoint` (default empty → `https://api-v2.zrok.io`)
+- `spec.apiEndpoint` (https + allowlisted; default empty → `https://api-v2.zrok.io`)
 - `spec.uniqueID` (default empty → kube-system Namespace UUID; Enable host prefix)
-- `spec.agent.image` (default `docker.io/openziti/zrok2:2.0.4`)
-- `spec.agent.consolePort` default 8888
+- `spec.agent.image` (default `docker.io/openziti/zrok2:2.0.4`; extras need `--agent-image-allowlist`)
+- `spec.agent.consolePort` default 8888 (localhost bind; not on Service)
+- `--agent-network-policy` / Helm `networkPolicy.enabled` (default false)
 - Persistence size default 1Gi RWO
 
 ## Error Handling
 
-Events: `SecretError`, `EnableError`, `Ready`, `SharesExist`, `DisableError`, `Disabled`, `Enabled`.
+Events: `SecretError`, `EnableError`, `Ready`, `SharesExist`, `DisableError`, `Disabled`, `Enabled`. Status reasons also include `ImageNotAllowed`, `EndpointNotAllowed`, `NetworkPolicyError`.
 
 Missing agent Deployment after Create → Ready=False `WaitingForAgent`, requeue 10s (cache can lag Create). Create AlreadyExists on PVC/Service/Deployment is ignored.
 
 ## Testing
 
-Controller envtest + unit coverage in `internal/controller/` (env-focused tests as present).
+Controller envtest + unit coverage in `internal/controller/` (`environment_security_test.go`: unowned identity Secret, ExternalName Service hijack).
 
 ## Common Issues
 

@@ -37,6 +37,9 @@ type ZrokShareReconciler struct {
 	Scheme   *runtime.Scheme
 	Recorder events.EventRecorder
 	Zrok     *zrokclient.Clients
+
+	// RestrictUpstream requires spec.upstream to be a Service in the Share namespace.
+	RestrictUpstream bool
 }
 
 // +kubebuilder:rbac:groups=zrok.k8s.zrok.io,resources=zrokshares,verbs=get;list;watch;create;update;patch;delete
@@ -78,6 +81,17 @@ func (r *ZrokShareReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	if mode == zrokv1alpha1.ShareModePublic && share.Spec.PrivateShareToken != "" {
 		r.setNotReady(ctx, share, "InvalidSpec", "privateShareToken is only valid with shareMode=private")
 		return ctrl.Result{}, nil
+	}
+
+	if r.RestrictUpstream {
+		if err := validateShareUpstream(share.Spec.Upstream.URL, share.Namespace); err != nil {
+			r.setNotReady(ctx, share, "UpstreamNotAllowed", err.Error())
+			return ctrl.Result{}, nil
+		}
+		if share.Spec.BackendMode == zrokv1alpha1.BackendModeSocks {
+			r.setNotReady(ctx, share, "BackendModeNotAllowed", "socks is disabled when --restrict-upstream is set")
+			return ctrl.Result{}, nil
+		}
 	}
 
 	env, err := r.getEnvironment(ctx, share)

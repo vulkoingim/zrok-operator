@@ -20,7 +20,7 @@
 ## External systems
 
 - **zrok controller API** — REST `/api/v2`, auth `X-TOKEN`, media `application/zrok.v1+json`
-- **zrok2 agent** — gRPC over unix socket; console HTTP for version probe
+- zrok2 agent — gRPC over unix socket; HTTP console binds 127.0.0.1 (not on Service); kubelet probes TCP `:7777`
 
 ## Codegen
 

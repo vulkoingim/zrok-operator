@@ -74,7 +74,9 @@ Local image builds (`mise run docker-build` / kind:deploy) still use the multi-s
 
 ## RBAC highlights
 
-ClusterRole `manager-role`: CRDs+status+finalizers; Deployments; PVC/Secret/Service; Pods get/list/watch; `namespaces` get (`kube-system` only, default uniqueID UUID); Ingress+status; core Events + `events.k8s.io/events` create/patch/update.
+ClusterRole `manager-role`: CRDs+status+finalizers; Deployments; PVC/Secret/Service; NetworkPolicies; Pods get/list/watch; `namespaces` get (`kube-system` only, default uniqueID UUID); Ingress+status; core Events + `events.k8s.io/events` create/patch/update.
+
+Helm: leader-election **Role** (leases/configmaps in the release namespace — not ClusterRole). Metrics TokenReview/SubjectAccessReview ClusterRole when `metrics.enabled`. Metrics Service when `metrics.enabled`. Agent NetworkPolicies are **opt-in** (`networkPolicy.enabled`, default false) because not every CNI enforces them.
 
 After EventRecorder migration, missing events RBAC → event writes fail (reconcile may still work).
 

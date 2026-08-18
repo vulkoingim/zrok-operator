@@ -1,9 +1,9 @@
 # Component: Agent Resources
 
-- **Location**: `internal/agent/` (`resources.go`, `resources_test.go`)
+- **Location**: `internal/agent/` (`resources.go`, `networkpolicy.go`, `image.go`)
 - **Purpose**: Pure helpers for desired PVC/Service/Deployment + naming; no reconcile loop
 - **Owner**: Environment reconciler (consumes Desired*)
-- **Last analysed**: 2026-08-13
+- **Last analysed**: 2026-08-18
 
 ## Data Flow Diagram
 
@@ -43,6 +43,7 @@ Keep agent pod shape consistent: non-root, seed identity once/repair, **wipe reg
 | `ManagedFrontendName` | `ko-{share.Namespace}-{share.Name}` |
 | `EnvironmentDescription` / `EnvironmentHost` | `{uniqueID}/zrok-operator/{ns}/{name}` (Enable body; shares have no metadata API) |
 | `ShareLabels` | K8s labels on ZrokShare (`managed-by`, env, share-mode, frontend-name) |
+| `NetworkPolicyName` | `{env}-agent` |
 | `AgentDialAddr` | `{svc}.{ns}.svc:7777` |
 
 ### Constants
@@ -54,10 +55,12 @@ Keep agent pod shape consistent: non-root, seed identity once/repair, **wipe reg
 ### Pod shape
 
 1. **Init `zrok-seed`**: copy Secret into `/mnt/.zrok2` including `environment.json` + `identities/environment.json`
-2. **Main**: `rm -f` `agent.socket` + `agent-registry.json`; `zrok2 agent start --console-address 0.0.0.0…`
+2. **Main**: `rm -f` `agent.socket` + `agent-registry.json`; `zrok2 agent start --console-address 127.0.0.1…`
 3. **Sidecar `grpc-proxy`**: socat TCP-LISTEN:7777 → unix `/mnt/.zrok2/agent.socket`
-4. **Probes**: HTTP `/v1/agent/version` on console port
-5. **Strategy**: Recreate
+4. **Probes**: TCP on grpc-proxy `:7777` (console is localhost-only, not on the Service)
+5. **Service**: ClusterIP, gRPC port only
+6. **SA token**: `automountServiceAccountToken: false`
+7. **Strategy**: Recreate
 
 Labels: `app.kubernetes.io/*`, `zrok.k8s.zrok.io/environment`.
 
@@ -68,7 +71,7 @@ Labels: `app.kubernetes.io/*`, `zrok.k8s.zrok.io/environment`.
 
 ## Testing
 
-`resources_test.go` — naming, seed init present, command contains registry wipe + `zrok2 agent start`.
+`resources_test.go` / `security_test.go` — naming, seed init, registry wipe, localhost console, ClusterIP gRPC-only Service, no SA token, image allowlist, NetworkPolicy from-manager.
 
 ## Common Issues
 

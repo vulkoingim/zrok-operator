@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/certwatcher"
@@ -47,6 +48,12 @@ func main() {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var printVersion bool
+	var agentNetworkPolicy bool
+	var restrictUpstream bool
+	var managerNamespace string
+	var managerAppName string
+	var allowedAPIHosts stringList
+	var allowedAgentImages stringList
 	var tlsOpts []func(*tls.Config)
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to.")
@@ -58,6 +65,18 @@ func main() {
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "Metrics key file name.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false, "Enable HTTP/2 for the metrics server.")
 	flag.BoolVar(&printVersion, "version", false, "Print version and exit.")
+	flag.BoolVar(&agentNetworkPolicy, "agent-network-policy", false,
+		"Create NetworkPolicy on agent pods (gRPC from this manager only). Requires a CNI that enforces NetworkPolicy.")
+	flag.BoolVar(&restrictUpstream, "restrict-upstream", false,
+		"Require ZrokShare.spec.upstream to be a Service in the Share namespace; disable socks.")
+	flag.StringVar(&managerNamespace, "manager-namespace", os.Getenv("POD_NAMESPACE"),
+		"Namespace the manager runs in (NetworkPolicy from:). Defaults to POD_NAMESPACE.")
+	flag.StringVar(&managerAppName, "manager-app-name", "zrok-operator",
+		"app.kubernetes.io/name label on the manager pod (NetworkPolicy from:).")
+	flag.Var(&allowedAPIHosts, "api-endpoint-allowlist",
+		"Extra https hosts allowed in spec.apiEndpoint (repeatable or comma-separated). api-v2.zrok.io is always allowed.")
+	flag.Var(&allowedAgentImages, "agent-image-allowlist",
+		"Extra agent images allowed in spec.agent.image (repeatable or comma-separated). Default zrok2 image is always allowed.")
 
 	opts := zap.Options{Development: true}
 	opts.BindFlags(flag.CommandLine)
@@ -69,6 +88,11 @@ func main() {
 	}
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+
+	if agentNetworkPolicy && managerNamespace == "" {
+		setupLog.Error(nil, "--agent-network-policy requires --manager-namespace or POD_NAMESPACE")
+		os.Exit(1)
+	}
 
 	if !enableHTTP2 {
 		tlsOpts = append(tlsOpts, func(c *tls.Config) {
@@ -114,24 +138,29 @@ func main() {
 		os.Exit(1)
 	}
 
-	zrokClients := zrokclient.NewDefaultClients(nil)
+	zrokClients := zrokclient.NewDefaultClients(nil, []string(allowedAPIHosts))
 
 	if err = (&controller.ZrokEnvironmentReconciler{
-		Client:    mgr.GetClient(),
-		APIReader: mgr.GetAPIReader(),
-		Scheme:    mgr.GetScheme(),
-		Recorder:  mgr.GetEventRecorder("zrokenvironment-controller"),
-		Zrok:      zrokClients,
+		Client:             mgr.GetClient(),
+		APIReader:          mgr.GetAPIReader(),
+		Scheme:             mgr.GetScheme(),
+		Recorder:           mgr.GetEventRecorder("zrokenvironment-controller"),
+		Zrok:               zrokClients,
+		ManagerNamespace:   managerNamespace,
+		ManagerAppName:     managerAppName,
+		AgentNetworkPolicy: agentNetworkPolicy,
+		AllowedAgentImages: []string(allowedAgentImages),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ZrokEnvironment")
 		os.Exit(1)
 	}
 
 	if err = (&controller.ZrokShareReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorder("zrokshare-controller"),
-		Zrok:     zrokClients,
+		Client:           mgr.GetClient(),
+		Scheme:           mgr.GetScheme(),
+		Recorder:         mgr.GetEventRecorder("zrokshare-controller"),
+		Zrok:             zrokClients,
+		RestrictUpstream: restrictUpstream,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ZrokShare")
 		os.Exit(1)
@@ -173,9 +202,28 @@ func main() {
 	}
 
 	setupLog.Info("starting manager",
-		"version", build.Version, "commit", build.GitRevision, "date", build.Date)
+		"version", build.Version, "commit", build.GitRevision, "date", build.Date,
+		"agentNetworkPolicy", agentNetworkPolicy, "restrictUpstream", restrictUpstream,
+		"apiEndpointAllowlist", []string(allowedAPIHosts), "agentImageAllowlist", []string(allowedAgentImages))
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
+}
+
+// stringList is a repeatable / comma-separated flag.Value.
+type stringList []string
+
+func (s *stringList) String() string {
+	return strings.Join(*s, ",")
+}
+
+func (s *stringList) Set(v string) error {
+	for _, p := range strings.Split(v, ",") {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			*s = append(*s, p)
+		}
+	}
+	return nil
 }

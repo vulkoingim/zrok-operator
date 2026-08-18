@@ -1,6 +1,6 @@
 # Architecture Diagrams
 
-> **Last Updated:** 2026-08-12
+> **Last Updated:** 2026-08-18
 >
 > Visual companion to [system-architecture.md](system-architecture.md).
 
@@ -15,7 +15,7 @@ flowchart LR
     crAccess[ZrokAccess]
     crIng[Ingress class=zrok]
     agent[zrok2 agent pod]
-    svc[Service :7777 gRPC / :8888 console]
+    svc[Service :7777 gRPC]
     upstream[Cluster Service e.g. nginx]
   end
   zrokAPI[zrok controller API]

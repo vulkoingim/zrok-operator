@@ -54,6 +54,27 @@ metrics:
     enabled: false
     labels: {}
 
-# Agent defaults applied via sample docs (not chart-managed Deployments).
+# NetworkPolicy requires a CNI that implements them (Calico, Cilium, cloud CNIs).
+# Kind + Flannel ignore the objects. Off by default.
+# When enabled: manager NetworkPolicy in this namespace, and the operator creates
+# per-agent NetworkPolicies (gRPC :7777 only from this manager).
+networkPolicy:
+  enabled: false
+  # Extra ingress peers for manager metrics :8443. Empty = any source on that port.
+  metricsFrom: []
+  # - namespaceSelector:
+  #     matchLabels:
+  #       kubernetes.io/metadata.name: monitoring
+
+security:
+  # Extra https hosts allowed in ZrokEnvironment.spec.apiEndpoint.
+  # api-v2.zrok.io is always allowed. http:// is never allowed.
+  apiEndpointAllowlist: []
+  # Extra agent images allowed in spec.agent.image. Default zrok2 pin is always allowed.
+  agentImageAllowlist: []
+  # Require ZrokShare.spec.upstream to be a Service in the Share namespace; disable socks.
+  restrictUpstream: false
+
+# Agent defaults (documentation / extra allowlist source). Operator pins DefaultImage in code.
 agent:
   image: docker.io/openziti/zrok2:2.0.4

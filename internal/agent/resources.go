@@ -177,9 +177,8 @@ func DesiredPVC(env *zrokv1alpha1.ZrokEnvironment) *corev1.PersistentVolumeClaim
 	return pvc
 }
 
-// DesiredService builds the agent Service (HTTP console + gRPC proxy).
+// DesiredService builds the ClusterIP Service for agent gRPC (TCP→unix). Console is localhost-only.
 func DesiredService(env *zrokv1alpha1.ZrokEnvironment) *corev1.Service {
-	consolePort := ConsolePort(env)
 	grpcPort := GRPCPort(env)
 	return &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
@@ -188,14 +187,9 @@ func DesiredService(env *zrokv1alpha1.ZrokEnvironment) *corev1.Service {
 			Labels:    Labels(env),
 		},
 		Spec: corev1.ServiceSpec{
+			Type:     corev1.ServiceTypeClusterIP,
 			Selector: Labels(env),
 			Ports: []corev1.ServicePort{
-				{
-					Name:       "console",
-					Port:       consolePort,
-					TargetPort: intstr.FromInt32(consolePort),
-					Protocol:   corev1.ProtocolTCP,
-				},
 				{
 					Name:       "grpc",
 					Port:       grpcPort,
@@ -265,6 +259,7 @@ func DesiredDeployment(env *zrokv1alpha1.ZrokEnvironment) *appsv1.Deployment {
 	// chown init — pod runAsNonRoot=true rejects UID 0 (CreateContainerConfigError).
 	// Enable is done by the manager (stores EnvZID); init only seeds ~/.zrok2 from Secret.
 
+	autoMount := false
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      DeploymentName(env),
@@ -278,7 +273,8 @@ func DesiredDeployment(env *zrokv1alpha1.ZrokEnvironment) *appsv1.Deployment {
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{Labels: labels},
 				Spec: corev1.PodSpec{
-					SecurityContext: podSec,
+					AutomountServiceAccountToken: &autoMount,
+					SecurityContext:              podSec,
 					InitContainers: []corev1.Container{
 						{
 							Name:            seedVolumeName,
@@ -317,7 +313,7 @@ func DesiredDeployment(env *zrokv1alpha1.ZrokEnvironment) *appsv1.Deployment {
 								"-c",
 								// Operator owns share lifecycle: wipe agent registry so ReloadRegistry
 								// does not race SharePublic against live remote reserved names (409 loop).
-								`rm -f /mnt/.zrok2/agent.socket /mnt/.zrok2/agent-registry.json && exec zrok2 agent start --console-address 0.0.0.0 --console-start-port "$PORT" --console-end-port "$PORT"`,
+								`rm -f /mnt/.zrok2/agent.socket /mnt/.zrok2/agent-registry.json && exec zrok2 agent start --console-address 127.0.0.1 --console-start-port "$PORT" --console-end-port "$PORT"`,
 							},
 							Env: []corev1.EnvVar{
 								{Name: "HOME", Value: homeMountPath},
@@ -331,26 +327,6 @@ func DesiredDeployment(env *zrokv1alpha1.ZrokEnvironment) *appsv1.Deployment {
 							Resources:       resources,
 							SecurityContext: secCtx,
 							VolumeMounts:    []corev1.VolumeMount{volMount},
-							ReadinessProbe: &corev1.Probe{
-								ProbeHandler: corev1.ProbeHandler{
-									HTTPGet: &corev1.HTTPGetAction{
-										Path: "/v1/agent/version",
-										Port: intstr.FromInt32(port),
-									},
-								},
-								InitialDelaySeconds: 5,
-								PeriodSeconds:       10,
-							},
-							LivenessProbe: &corev1.Probe{
-								ProbeHandler: corev1.ProbeHandler{
-									HTTPGet: &corev1.HTTPGetAction{
-										Path: "/v1/agent/version",
-										Port: intstr.FromInt32(port),
-									},
-								},
-								InitialDelaySeconds: 15,
-								PeriodSeconds:       20,
-							},
 						},
 						{
 							// Agent gRPC is unix-socket-only; proxy it to TCP for the manager.
@@ -371,6 +347,20 @@ func DesiredDeployment(env *zrokv1alpha1.ZrokEnvironment) *appsv1.Deployment {
 							}},
 							SecurityContext: secCtx,
 							VolumeMounts:    []corev1.VolumeMount{volMount},
+							ReadinessProbe: &corev1.Probe{
+								ProbeHandler: corev1.ProbeHandler{
+									TCPSocket: &corev1.TCPSocketAction{Port: intstr.FromInt32(grpcPort)},
+								},
+								InitialDelaySeconds: 5,
+								PeriodSeconds:       10,
+							},
+							LivenessProbe: &corev1.Probe{
+								ProbeHandler: corev1.ProbeHandler{
+									TCPSocket: &corev1.TCPSocketAction{Port: intstr.FromInt32(grpcPort)},
+								},
+								InitialDelaySeconds: 15,
+								PeriodSeconds:       20,
+							},
 							Resources: corev1.ResourceRequirements{
 								Requests: corev1.ResourceList{
 									corev1.ResourceCPU:    resource.MustParse("10m"),
