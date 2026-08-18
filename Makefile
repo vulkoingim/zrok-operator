@@ -1,6 +1,8 @@
 # Convenience targets. Canonical logic lives in mise.toml + .mise-tasks/.
 # Prefer: mise run <task>
 # This Makefile runs the same recipes / bash file-tasks directly (no `mise run`).
+# Do not name Make targets with colons (mise `kind:up` → Make `kind-up`).
+# `.PHONY: kind:up` is a static pattern rule; GNU Make: "target pattern contains no '%'".
 
 IMG ?= zrok-operator:dev
 export IMG
@@ -24,7 +26,7 @@ help: ## Display this help
 
 .PHONY: manifests
 manifests: ## Generate CRDs + RBAC
-	controller-gen rbac:roleName=manager-role crd webhook paths=./... output:crd:artifacts:config=config/crd/bases
+	controller-gen rbac:roleName=manager-role crd paths=./... output:crd:artifacts:config=config/crd/bases
 
 .PHONY: generate
 generate: ## Generate DeepCopy methods
@@ -108,17 +110,17 @@ deploy: ## Deploy operator via kustomize
 undeploy: ## Undeploy operator
 	$(TASKS)/undeploy
 
-.PHONY: kind:up
-kind:up: ## Create Kind cluster
-	$(TASKS)/kind:up
+.PHONY: kind-up
+kind-up: ## Create Kind cluster (mise: kind:up)
+	$(TASKS)/kind/up
 
-.PHONY: kind:load
-kind:load: ## Load image into Kind (builds image first via script depends)
-	IMG="$(IMG)" $(TASKS)/kind:load
+.PHONY: kind-load
+kind-load: ## Load image into Kind (mise: kind:load)
+	IMG="$(IMG)" $(TASKS)/kind/load
 
-.PHONY: kind:deploy
-kind:deploy: ## Build, load, and deploy to Kind
-	IMG="$(IMG)" $(TASKS)/kind:deploy
+.PHONY: kind-deploy
+kind-deploy: ## Build, load, and deploy to Kind (mise: kind:deploy)
+	IMG="$(IMG)" $(TASKS)/kind/deploy
 
 .PHONY: samples
 samples: ## Apply sample CRs (SECRET=1 to create zrok-credentials from env)

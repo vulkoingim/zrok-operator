@@ -6,6 +6,7 @@ go = "1.26"
 "go:sigs.k8s.io/controller-runtime/tools/setup-envtest" = "latest"
 "go:golang.org/x/vuln/cmd/govulncheck" = "latest"
 "go:golang.org/x/exp/cmd/gorelease" = "latest"
+cosign = "latest"
 golangci-lint = "2.12.2"
 kubectl = "1.36"
 kind = "0.32"
@@ -34,7 +35,7 @@ run = "controller-gen object:headerFile=hack/boilerplate.go.txt paths=./..."
 
 [tasks.manifests]
 description = "Generate CRDs + RBAC"
-run = "controller-gen rbac:roleName=manager-role crd webhook paths=./... output:crd:artifacts:config=config/crd/bases"
+run = "controller-gen rbac:roleName=manager-role crd paths=./... output:crd:artifacts:config=config/crd/bases"
 
 [tasks.mocks]
 description = "Generate mocks"

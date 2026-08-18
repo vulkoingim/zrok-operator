@@ -29,6 +29,7 @@ No `version` file. Version/Date via `-ldflags -X`. GitRevision from `runtime/deb
 # Kustomize / Kind
 mise run deploy
 # or: make deploy IMG=zrok-operator:dev   # runs .mise-tasks/deploy
+# make kind-up ≡ mise run kind:up  (Make cannot use colons in target names)
 
 # Helm
 helm upgrade --install zrok-operator oci://ghcr.io/vulkoingim/charts/zrok-operator \
@@ -49,7 +50,7 @@ Triggers: `pull_request`, `push` to `main`, `merge_group` (merge queue), `workfl
 |---|---|---|
 | `Lint` | always | writes shared mise tool cache; golangci analysis |
 | `Test` | `needs: [lint]` | restores mise; writes Go mod/build cache on miss; envtest `bin/k8s` |
-| `E2E` | `needs: [test]`; **not** on PRs. Runs on `merge_group`, `push` to `main`, or `workflow_dispatch` with `e2e=true` | restore mise+Go; kindest/node tarball; buildx `type=gha` |
+| `E2E` | `needs: [test]`; **not** on PRs. Runs on `merge_group`, `push` to `main`, or `workflow_dispatch` with `e2e=true`. Live share if repo secret `ZROK2_ENABLE_TOKEN` is set (`ci.yml` already maps it). | restore mise+Go; kindest/node tarball; buildx `type=gha` |
 
 Do **not** pass `install_args` to mise-action (splits the cache key). `MISE_TASK_RUN_AUTO_INSTALL=false` so `mise run` does not install extra tools after the action. Go restore **before** mise (`go:` tools make `pkg/mod` read-only; later tar restore → `File exists`). Lint writes mise; Test writes Go — jobs are sequential so they cannot race the same key.
 
