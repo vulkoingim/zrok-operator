@@ -7,8 +7,8 @@
 | Layer | Where | How to run |
 |---|---|---|
 | Unit / envtest | `internal/...` (exclude e2e) | `mise run test` |
-| Agent helpers | `internal/agent/resources_test.go` | included in `mise run test` |
-| E2E Kind | `test/e2e/` | Manager pod Running + HTTPS `/metrics` scrape + optional live share (`ZROK2_ENABLE_TOKEN`). `mise run test-e2e`. CI: merge queue / `main` / dispatch — **not** every PR. |
+| Agent helpers | `internal/agent/*_test.go` | included in `mise run test` |
+| E2E Kind | `test/e2e/` | Manager pod Running + HTTPS `/metrics` scrape + optional live share (`ZROK2_ENABLE_TOKEN`). Live share is nested in the Manager Ordered container so it runs **before** AfterAll undeploy. Sample path is repo-root `config/samples/...` (`utils.Run` cds to project root). `mise run test-e2e`. CI: merge queue / `main` / dispatch — **not** every PR. |
 
 ## Mocks (mandatory)
 
@@ -35,7 +35,7 @@
 
 Ginkgo e2e calls `make install` / `make deploy` (parses the **whole** Makefile). GNU Make treats `kind:up` as a static pattern → `target pattern contains no '%'`. Make wrappers are `kind-up` / `kind-load` / `kind-deploy` → `.mise-tasks/kind/{up,load,deploy}`. Mise names stay `kind:up`.
 
-No cert-manager / prometheus-operator in e2e. Metrics TLS is controller-runtime self-signed; the scrape test uses `curl -k`. Helm `metrics.serviceMonitor` is the scrape path if you want Prometheus Operator in-cluster.
+No cert-manager / prometheus-operator in e2e. Metrics TLS is controller-runtime self-signed; the scrape test uses `curl -k`. Helm `metrics.serviceMonitor` is the scrape path if you want Prometheus Operator in-cluster. Live-share e2e creates the enable-token Secret via `--from-file=enable-token=/dev/stdin` (argv is redacted).
 
 ## One-test tip
 

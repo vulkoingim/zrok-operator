@@ -95,6 +95,10 @@ Mocks: edit `.mockery.yml` → `mise run gen` (or `mise run gen:mocks`). **Never
 10. **No secrets in docs** (`manifest.yaml` enable tokens stay local/untracked).
 11. **Status writes** go through `status.PatchStatus` (MergeFrom + conflict retry), not bare `_ = Status().Update`.
 12. **When docs and code disagree, code wins — then update the memory bank immediately.**
+13. **`spec.apiEndpoint` is https + allowlisted.** Default host `api-v2.zrok.io` is always allowed; extra hosts via `--api-endpoint-allowlist`. REST client drops `X-TOKEN` on redirects and refuses cross-host / non-https redirects.
+14. **`spec.agent.image` is allowlisted.** Empty/default pin always allowed; extras via `--agent-image-allowlist`. Agent pods set `automountServiceAccountToken: false`. Console binds `127.0.0.1`; Service is ClusterIP gRPC-only (delete+recreate if Type/ExternalName was hijacked).
+15. **Identity Secret must be controller-owned.** Unowned `{env}-zrok-identity` is deleted and Enable retried. Do not skip Enable just because a Secret exists.
+16. **Agent NetworkPolicy is opt-in.** Helm `networkPolicy.enabled` (default false) — not every CNI enforces NetworkPolicy. When on: manager NP + per-env NP (gRPC from manager ns only). `--restrict-upstream` gates Share targets to same-ns Services and disables `socks`.
 
 ---
 

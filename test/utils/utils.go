@@ -19,7 +19,7 @@ func Run(cmd *exec.Cmd) (string, error) {
 	}
 
 	cmd.Env = append(os.Environ(), "GO111MODULE=on")
-	command := strings.Join(cmd.Args, " ")
+	command := redactCmdArgs(cmd.Args)
 	_, _ = fmt.Fprintf(GinkgoWriter, "running: %s\n", command)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -27,6 +27,21 @@ func Run(cmd *exec.Cmd) (string, error) {
 	}
 
 	return string(output), nil
+}
+
+func redactCmdArgs(args []string) string {
+	out := make([]string, len(args))
+	for i, a := range args {
+		if strings.HasPrefix(a, "--from-literal=") {
+			key, _, ok := strings.Cut(strings.TrimPrefix(a, "--from-literal="), "=")
+			if ok {
+				out[i] = "--from-literal=" + key + "=[redacted]"
+				continue
+			}
+		}
+		out[i] = a
+	}
+	return strings.Join(out, " ")
 }
 
 // LoadImageToKindClusterWithName loads a local docker image to the kind cluster.

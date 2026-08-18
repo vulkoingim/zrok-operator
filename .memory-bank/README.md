@@ -126,7 +126,7 @@ zrok-operator/
 | Share/Access/Env Ready check | zrok2 agent | gRPC via socat `:7777`→unix | `internal/zrokclient/agent_grpc.go` |
 | Agent pod | zrok controller | zrok2 CLI / agent | `internal/agent/resources.go` |
 | Ingress reconciler | ZrokShare CR | K8s API (owns) | `internal/controller/ingress_controller.go` |
-| Manager probes (agent) | Agent console | HTTP `:8888` `/v1/agent/version` | Deployment probes only |
+| Manager probes (agent) | grpc-proxy TCP `:7777` | Deployment probes; console is 127.0.0.1 only |
 
 ---
 

@@ -35,6 +35,9 @@ func TestDesiredResources(t *testing.T) {
 	if len(cmd) < 3 || !strings.Contains(cmd[2], "agent-registry.json") || !strings.Contains(cmd[2], "zrok2 agent start") {
 		t.Fatalf("agent start must wipe registry: %v", cmd)
 	}
+	if !strings.Contains(cmd[2], "--console-address 127.0.0.1") {
+		t.Fatalf("console must bind localhost: %v", cmd)
+	}
 }
 
 func TestManagedFrontendName(t *testing.T) {

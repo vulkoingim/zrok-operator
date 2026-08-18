@@ -80,6 +80,18 @@ rules:
   - patch
   - update
 - apiGroups:
+  - networking.k8s.io
+  resources:
+  - networkpolicies
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
   - zrok.k8s.zrok.io
   resources:
   - zrokaccesses

@@ -22,7 +22,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/go-openapi/runtime"
 	"github.com/go-openapi/strfmt"
@@ -68,22 +67,27 @@ type Clients struct {
 }
 
 // NewDefaultClients returns production clients.
-func NewDefaultClients(httpClient *http.Client) *Clients {
+// allowedAPIHosts are extra https hosts for spec.apiEndpoint; api-v2.zrok.io is always included.
+func NewDefaultClients(httpClient *http.Client, allowedAPIHosts []string) *Clients {
 	if httpClient == nil {
-		httpClient = &http.Client{Timeout: 60 * time.Second}
+		httpClient = NewSecureHTTPClient()
 	}
 	return &Clients{
-		REST:  &HTTPRESTClient{HTTP: httpClient},
+		REST:  &HTTPRESTClient{HTTP: httpClient, AllowedHosts: NormalizeAPIHosts(allowedAPIHosts)},
 		Agent: &GRPCAgentClient{},
 	}
 }
 
 // HTTPRESTClient implements RESTClient against the zrok controller.
 type HTTPRESTClient struct {
-	HTTP *http.Client
+	HTTP         *http.Client
+	AllowedHosts []string
 }
 
 func (c *HTTPRESTClient) clientFor(apiEndpoint string) (*zrokrest.Zrok, error) {
+	if err := ValidateAPIEndpoint(apiEndpoint, c.AllowedHosts); err != nil {
+		return nil, err
+	}
 	endpoint := strings.TrimRight(apiEndpoint, "/")
 	if endpoint == "" {
 		endpoint = DefaultAPIEndpoint
@@ -97,11 +101,7 @@ func (c *HTTPRESTClient) clientFor(apiEndpoint string) (*zrokrest.Zrok, error) {
 	if u.Path == "" || u.Path == "/" {
 		basePath = "/api/v2"
 	}
-	schemes := []string{u.Scheme}
-	if schemes[0] == "" {
-		schemes = []string{"https"}
-	}
-	transport := httptransport.NewWithClient(host, basePath, schemes, c.HTTP)
+	transport := httptransport.NewWithClient(host, basePath, []string{"https"}, c.HTTP)
 	// zrok API consumes/produces application/zrok.v1+json (not application/json).
 	transport.Producers["application/zrok.v1+json"] = runtime.JSONProducer()
 	transport.Consumers["application/zrok.v1+json"] = runtime.JSONConsumer()

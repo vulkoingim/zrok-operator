@@ -31,6 +31,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -51,6 +52,15 @@ type ZrokEnvironmentReconciler struct {
 	Zrok     *zrokclient.Clients
 	// APIReader bypasses the informer cache. Namespaces are not watched.
 	APIReader client.Reader
+
+	// ManagerNamespace is the namespace the manager pod runs in (NetworkPolicy from:).
+	ManagerNamespace string
+	// ManagerAppName is app.kubernetes.io/name on the manager pod.
+	ManagerAppName string
+	// AgentNetworkPolicy creates per-environment NetworkPolicies (Helm networkPolicy.enabled).
+	AgentNetworkPolicy bool
+	// AllowedAgentImages are extra images beyond agent.DefaultImage.
+	AllowedAgentImages []string
 }
 
 // +kubebuilder:rbac:groups=zrok.k8s.zrok.io,resources=zrokenvironments,verbs=get;list;watch;create;update;patch;delete
@@ -65,6 +75,7 @@ type ZrokEnvironmentReconciler struct {
 // +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch;update
 // +kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;watch
 // +kubebuilder:rbac:groups=core,resources=namespaces,resourceNames=kube-system,verbs=get
+// +kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies,verbs=get;list;watch;create;update;patch;delete
 
 func (r *ZrokEnvironmentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
@@ -94,7 +105,16 @@ func (r *ZrokEnvironmentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return ctrl.Result{}, err
 	}
 
+	if err = agent.ValidateImage(env.Spec.Agent.Image, r.AllowedAgentImages); err != nil {
+		_ = r.setNotReady(ctx, env, "ImageNotAllowed", err.Error())
+		return ctrl.Result{RequeueAfter: 2 * time.Minute}, nil
+	}
+
 	if err = r.ensureEnabled(ctx, env, token); err != nil {
+		if zrokclient.IsEndpointNotAllowed(err) {
+			_ = r.setNotReady(ctx, env, "EndpointNotAllowed", err.Error())
+			return ctrl.Result{RequeueAfter: 2 * time.Minute}, nil
+		}
 		_ = r.setNotReady(ctx, env, "EnableError", err.Error())
 		opmetrics.EnvironmentReconcileErrors.Inc()
 		r.Recorder.Eventf(env, nil, corev1.EventTypeWarning, "EnableError", "Error", "%s", err.Error())
@@ -115,6 +135,12 @@ func (r *ZrokEnvironmentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 	if err = r.ensureDeployment(ctx, env); err != nil {
 		_ = r.setNotReady(ctx, env, "DeploymentError", err.Error())
+		opmetrics.EnvironmentReconcileErrors.Inc()
+		return ctrl.Result{}, err
+	}
+
+	if err = r.ensureNetworkPolicy(ctx, env); err != nil {
+		_ = r.setNotReady(ctx, env, "NetworkPolicyError", err.Error())
 		opmetrics.EnvironmentReconcileErrors.Inc()
 		return ctrl.Result{}, err
 	}
@@ -224,6 +250,7 @@ func (r *ZrokEnvironmentReconciler) reconcileDelete(ctx context.Context, env *zr
 
 	_ = r.Delete(ctx, &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: agent.DeploymentName(env), Namespace: env.Namespace}})
 	_ = r.Delete(ctx, &corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: agent.ServiceName(env), Namespace: env.Namespace}})
+	_ = r.Delete(ctx, &networkingv1.NetworkPolicy{ObjectMeta: metav1.ObjectMeta{Name: agent.NetworkPolicyName(env), Namespace: env.Namespace}})
 	_ = r.Delete(ctx, &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: agent.IdentitySecretName(env), Namespace: env.Namespace}})
 	if env.Spec.ReclaimPolicy != zrokv1alpha1.ReclaimRetain {
 		_ = r.Delete(ctx, &corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{Name: agent.PVCName(env), Namespace: env.Namespace}})
@@ -266,17 +293,7 @@ func (r *ZrokEnvironmentReconciler) ensureEnabled(ctx context.Context, env *zrok
 	existing := &corev1.Secret{}
 	err := r.Get(ctx, types.NamespacedName{Name: secretName, Namespace: env.Namespace}, existing)
 	if err == nil {
-		if env.Status.EnvZID == "" {
-			if zid := string(existing.Data["envZID"]); zid != "" {
-				if statusErr := status.PatchStatus(ctx, r.Client, env, func() error {
-					env.Status.EnvZID = zid
-					return nil
-				}); statusErr != nil {
-					return statusErr
-				}
-			}
-		}
-		return nil
+		return r.adoptIdentitySecret(ctx, env, existing)
 	}
 	if !apierrors.IsNotFound(err) {
 		return err
@@ -355,6 +372,34 @@ func (r *ZrokEnvironmentReconciler) ensureEnabled(ctx context.Context, env *zrok
 	return nil
 }
 
+// adoptIdentitySecret trusts a Secret only if this Env is its controller owner.
+// Unowned Secrets are deleted so Enable can proceed (planted-identity defense).
+func (r *ZrokEnvironmentReconciler) adoptIdentitySecret(ctx context.Context, env *zrokv1alpha1.ZrokEnvironment, existing *corev1.Secret) error {
+	if !metav1.IsControlledBy(existing, env) {
+		if err := r.Delete(ctx, existing); err != nil {
+			return fmt.Errorf("deleting unowned identity secret %s: %w", existing.Name, err)
+		}
+		return fmt.Errorf("deleted unowned identity secret %s; will retry Enable", existing.Name)
+	}
+	zid := string(existing.Data["envZID"])
+	if zid == "" {
+		if err := r.Delete(ctx, existing); err != nil {
+			return fmt.Errorf("deleting incomplete identity secret %s: %w", existing.Name, err)
+		}
+		return fmt.Errorf("deleted incomplete identity secret %s; will retry Enable", existing.Name)
+	}
+	if env.Status.EnvZID == "" {
+		return status.PatchStatus(ctx, r.Client, env, func() error {
+			env.Status.EnvZID = zid
+			return nil
+		})
+	}
+	if env.Status.EnvZID != zid {
+		return fmt.Errorf("identity secret envZID does not match status")
+	}
+	return nil
+}
+
 func (r *ZrokEnvironmentReconciler) resolveUniqueID(ctx context.Context, env *zrokv1alpha1.ZrokEnvironment) (string, error) {
 	if env.Spec.UniqueID != "" {
 		return env.Spec.UniqueID, nil
@@ -401,12 +446,57 @@ func (r *ZrokEnvironmentReconciler) ensureService(ctx context.Context, env *zrok
 	if err != nil {
 		return err
 	}
+	if hijackedAgentService(existing) {
+		if err := r.Delete(ctx, existing); err != nil {
+			return err
+		}
+		return fmt.Errorf("deleted non-ClusterIP agent Service %s; will recreate", existing.Name)
+	}
 	if apiequality.Semantic.DeepEqual(existing.Spec.Selector, desired.Spec.Selector) &&
-		apiequality.Semantic.DeepEqual(existing.Spec.Ports, desired.Spec.Ports) {
+		apiequality.Semantic.DeepEqual(existing.Spec.Ports, desired.Spec.Ports) &&
+		existing.Spec.Type == corev1.ServiceTypeClusterIP {
 		return nil
 	}
+	existing.Spec.Type = corev1.ServiceTypeClusterIP
+	existing.Spec.ExternalName = ""
 	existing.Spec.Selector = desired.Spec.Selector
 	existing.Spec.Ports = desired.Spec.Ports
+	return r.Update(ctx, existing)
+}
+
+func hijackedAgentService(svc *corev1.Service) bool {
+	return svc.Spec.Type != corev1.ServiceTypeClusterIP || svc.Spec.ExternalName != ""
+}
+
+func (r *ZrokEnvironmentReconciler) ensureNetworkPolicy(ctx context.Context, env *zrokv1alpha1.ZrokEnvironment) error {
+	existing := &networkingv1.NetworkPolicy{}
+	key := types.NamespacedName{Name: agent.NetworkPolicyName(env), Namespace: env.Namespace}
+	err := r.Get(ctx, key, existing)
+	if !r.AgentNetworkPolicy {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		return client.IgnoreNotFound(r.Delete(ctx, existing))
+	}
+	desired := agent.DesiredNetworkPolicy(env, r.ManagerNamespace, r.ManagerAppName)
+	if err := controllerutil.SetControllerReference(env, desired, r.Scheme); err != nil {
+		return err
+	}
+	if apierrors.IsNotFound(err) {
+		return ignoreAlreadyExists(r.Create(ctx, desired))
+	}
+	if err != nil {
+		return err
+	}
+	if apiequality.Semantic.DeepEqual(existing.Spec, desired.Spec) &&
+		apiequality.Semantic.DeepEqual(existing.Labels, desired.Labels) {
+		return nil
+	}
+	existing.Spec = desired.Spec
+	existing.Labels = desired.Labels
 	return r.Update(ctx, existing)
 }
 
@@ -470,6 +560,7 @@ func (r *ZrokEnvironmentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&corev1.Service{}).
 		Owns(&corev1.PersistentVolumeClaim{}).
 		Owns(&corev1.Secret{}).
+		Owns(&networkingv1.NetworkPolicy{}).
 		Named("zrokenvironment").
 		Complete(r)
 }

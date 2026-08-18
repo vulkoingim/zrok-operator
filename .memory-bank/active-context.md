@@ -14,6 +14,8 @@
 
 ## Recent Progress
 
+- **Hardening** (2026-08-18): https+allowlist `apiEndpoint` (drop `X-TOKEN` on redirect); agent image allowlist; ClusterIP-only agent Service; localhost console; `automountServiceAccountToken: false`; unowned identity Secret deleted; Helm `networkPolicy.enabled` (default false) gates manager NP + `--agent-network-policy`; namespaced leader-election Role; metrics TokenReview RBAC + metrics Service; e2e enable token via stdin (argv redacted). `--restrict-upstream` optional.
+
 - **Dead scaffold purge** (2026-08-18): no cert-manager/prometheus-operator e2e; dropped unused `config/prometheus`, `config/network-policy`, cert-manager metrics patch, samples kustomization, webhook wiring in `cmd/main.go`, unused `internal/gateway` stub. E2e is manager + `/metrics` + optional live share.
 
 - **E2E `make install` parse fail** (2026-08-18): GNU Make `.PHONY: kind:up` → `target pattern contains no '%'`. Wrappers are `kind-up` → `.mise-tasks/kind/up`. E2e Ginkgo still calls `make install`.

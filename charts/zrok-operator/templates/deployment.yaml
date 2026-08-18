@@ -30,12 +30,26 @@ spec:
           args:
             - --leader-elect={{ .Values.leaderElect }}
             - --health-probe-bind-address=:8081
+            - --manager-app-name={{ include "zrok-operator.name" . }}
+            - --agent-network-policy={{ .Values.networkPolicy.enabled }}
+            - --restrict-upstream={{ .Values.security.restrictUpstream }}
+            {{- range .Values.security.apiEndpointAllowlist }}
+            - --api-endpoint-allowlist={{ . }}
+            {{- end }}
+            {{- range .Values.security.agentImageAllowlist }}
+            - --agent-image-allowlist={{ . }}
+            {{- end }}
             {{- if .Values.metrics.enabled }}
             - --metrics-bind-address=:8443
             - --metrics-secure=true
             {{- else }}
             - --metrics-bind-address=0
             {{- end }}
+          env:
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
           ports:
             - name: health
               containerPort: 8081

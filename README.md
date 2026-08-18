@@ -52,7 +52,7 @@ kind: ZrokEnvironment
 metadata:
   name: default
 spec:
-  # apiEndpoint: https://api-v2.zrok.io   # omit = public zrok.io; set for self-hosted
+  # apiEndpoint: https://api-v2.zrok.io   # omit = public zrok.io; must be https + allowlisted
   # uniqueID: ""                          # omit = kube-system Namespace UUID; prefixes Enable host
   enableTokenSecretRef:
     name: zrok-credentials # required
@@ -61,7 +61,7 @@ spec:
   agent:
     image: docker.io/openziti/zrok2:2.0.4 # omit = this default
     replicas: 1 # only 1 allowed (Recreate)
-    consolePort: 8888 # HTTP console in-pod; manager uses gRPC :7777
+    consolePort: 8888 # localhost-only HTTP console; manager uses gRPC :7777
     persistence:
       size: 1Gi # PVC for ~/.zrok2
       # storageClassName: standard  # omit = cluster default
@@ -152,6 +152,12 @@ helm upgrade --install zrok-operator ./charts/zrok-operator \
 ```
 
 Prefer a pre-created Secret over `--set credentials.enableToken=...`.
+
+Self-hosted zrok: `--set security.apiEndpointAllowlist={zrok.example.com}` (`https://api-v2.zrok.io` is always allowed). Custom agent images: `--set security.agentImageAllowlist={repo/image:tag}`. Same-namespace upstream only: `--set security.restrictUpstream=true`.
+
+NetworkPolicy is **off by default** (not every CNI enforces it). `--set networkPolicy.enabled=true` emits a manager NetworkPolicy and tells the operator to create per-agent policies (gRPC `:7777` from this namespace only). Kind/Flannel ignore the objects.
+
+Enable Prometheus `ServiceMonitor` via `metrics.serviceMonitor.enabled=true` (chart also creates the metrics Service).
 
 ## Development
 

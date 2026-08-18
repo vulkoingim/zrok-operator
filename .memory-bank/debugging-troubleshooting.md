@@ -48,7 +48,7 @@
 
 ### Env never Ready
 
-Check: enable token Secret, identity Secret keys, PVC mount, agent probe `/v1/agent/version`, gRPC :7777 via socat, REST Enable errors in Events.
+Check: enable token Secret, identity Secret keys + ownerRef, PVC mount, agent TCP probe :7777, gRPC :7777 via socat, REST Enable errors in Events (`EndpointNotAllowed` / `ImageNotAllowed`).
 
 ### UI says Reservation ephemeral but name is reserved
 

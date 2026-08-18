@@ -1,6 +1,6 @@
 # zrok-operator System Architecture
 
-> **Last Updated:** 2026-08-12
+> **Last Updated:** 2026-08-18
 
 ## 1. Overview
 
@@ -34,7 +34,7 @@ flowchart TD
   env -->|owns| idSecret[Identity Secret]
   env -->|owns| pvc[PVC zrok-home]
   env -->|owns| deploy[Agent Deployment]
-  env -->|owns| svc[Agent Service :7777/:8888]
+  env -->|owns| svc[Agent Service :7777]
   deploy -->|gRPC Status| ready[Env Ready]
   share[ZrokShare] -->|waits| ready
   share -->|REST Create/UpdateShareName| zrokAPI
@@ -77,8 +77,13 @@ No workers/queues. Reconciliation + controller-runtime requeue:
 ## 6. Security & Multi-Tenancy
 
 - Enable token lives in user-provided Secret (`enable-token` key default)
-- Identity Secret is cluster-scoped to the Environment’s namespace
-- Agent runs non-root (`runAsNonRoot`, UID 2171)
+- Identity Secret is trusted only with a controller ownerRef; unowned `{env}-zrok-identity` is deleted and Enable retried
+- Agent runs non-root (`runAsNonRoot`, UID 2171), `automountServiceAccountToken: false`, console bound to `127.0.0.1`
+- Agent Service is ClusterIP gRPC-only (`:7777`); ExternalName/NodePort hijacks are deleted and recreated
+- `spec.apiEndpoint` must be https and allowlisted (`api-v2.zrok.io` always; extras via `--api-endpoint-allowlist`). REST drops `X-TOKEN` on redirects
+- `spec.agent.image` allowlisted (`DefaultImage` always; extras via `--agent-image-allowlist`)
+- Optional `--restrict-upstream`: Share URL must be a Service in the Share namespace; `socks` disabled
+- Optional agent NetworkPolicy (`--agent-network-policy` / Helm `networkPolicy.enabled`, **default false** — not every CNI enforces NP): gRPC ingress from manager namespace only
 - Isolation model: one Environment ≈ one zrok envZID ≈ one agent; Shares must reference an Environment in-cluster
 - Enable host/description `{uniqueID}/zrok-operator/{ns}/{name}` (`spec.uniqueID` or kube-system Namespace UUID) so one zrok account can span clusters
 - No multi-tenant SaaS layer in this repo — cluster RBAC is the boundary
@@ -90,7 +95,7 @@ No workers/queues. Reconciliation + controller-runtime requeue:
 - Metrics:
   - `zrok_share_ready{namespace,name}` / `zrok_environment_ready{namespace,name}` gauges (1/0)
   - `zrok_share_reconcile_errors`, `zrok_environment_reconcile_errors`, `zrok_access_reconcile_errors` counters
-- Agent probes: HTTP GET `/v1/agent/version` on console port
+- Agent probes: TCP on gRPC proxy `:7777` (console is localhost-only, not a probe target)
 - Status writes use `status.PatchStatus` (MergeFrom + conflict retry)
 
 ## 8. Deployment Topology
@@ -98,7 +103,7 @@ No workers/queues. Reconciliation + controller-runtime requeue:
 | Piece | Where | Ports |
 |---|---|---|
 | Manager | `zrok-operator` Deployment (Helm/Kustomize) | metrics/health as configured |
-| Agent | per-Environment Deployment `{env}-agent` | console **8888**, gRPC proxy **7777** |
+| Agent | per-Environment Deployment `{env}-agent` | gRPC proxy **7777** (ClusterIP); console **8888** localhost-only |
 | Remote API | `spec.apiEndpoint` or `https://api-v2.zrok.io` | HTTPS |
 
 Leader election ID: `f22d3959.k8s.zrok.io`.

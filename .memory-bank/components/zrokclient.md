@@ -1,6 +1,6 @@
 # Component: zrokclient
 
-- **Location**: `internal/zrokclient/` (`client.go`, `agent_grpc.go`, `mock/`)
+- **Location**: `internal/zrokclient/` (`client.go`, `agent_grpc.go`, `endpoint.go`, `mock/`)
 - **Purpose**: Typed clients for zrok controller REST API and zrok2 agent gRPC
 - **Owner**: Environment, Share, Access reconcilers
 - **Last analysed**: 2026-08-18
@@ -44,14 +44,14 @@ type AgentClient interface {
 }
 ```
 
-Helpers: `NewDefaultClients`, `RemoteShare`, `TargetsEqual`, `FindByFrontendName` / `FindByToken`, `FrontendEndpointMatchesName`, `PersistEnabledEnvironment` (test helper).
+Helpers: `NewDefaultClients(httpClient, allowedAPIHosts)`, `NewSecureHTTPClient`, `ValidateAPIEndpoint`, `NormalizeAPIHosts`, `RemoteShare`, `TargetsEqual`, `FindByFrontendName` / `FindByToken`, `FrontendEndpointMatchesName`, `PersistEnabledEnvironment` (test helper). `api-v2.zrok.io` is always allowlisted. `EndpointNotAllowedError` / `IsEndpointNotAllowed`.
 
 ## Protocol details
 
 | Client | Base | Auth | Notes |
 |---|---|---|---|
-| REST | `{apiEndpoint}/api/v2` | `X-TOKEN` | Media `application/zrok.v1+json`; default endpoint `https://api-v2.zrok.io` |
-| Agent | `host:port` | none (cluster network) | Native gRPC `agentGrpc`; dial `AgentDialAddr` |
+| REST | `{apiEndpoint}/api/v2` | `X-TOKEN` | Media `application/zrok.v1+json`; default `https://api-v2.zrok.io`; **https + host allowlist**; `CheckRedirect` drops `X-TOKEN`, refuses cross-host / non-https |
+| Agent | `host:port` | none (cluster network; optional NetworkPolicy) | Native gRPC `agentGrpc`; dial `AgentDialAddr` |
 
 ### Idempotent HTTP semantics
 
@@ -66,6 +66,7 @@ Callers interpret SharePublic errors (409) at controller layer. REST methods wra
 ## Testing
 
 - `.mockery.yml` → `internal/zrokclient/mock/mocks.go`
+- `endpoint_test.go` — allowlist, blocked hosts, CheckRedirect drops `X-TOKEN`
 - **Never hand-write mocks** — `mise run gen`
 - Controllers inject interfaces
 
