@@ -3,7 +3,7 @@
 - **Location**: `internal/controller/environment_controller.go`
 - **Purpose**: Enable zrok env, materialize identity + agent workload, Disable on delete
 - **Owner**: manager (`zrokenvironment-controller` recorder)
-- **Last analysed**: 2026-08-12
+- **Last analysed**: 2026-08-18
 
 ## Data Flow Diagram
 
@@ -41,18 +41,20 @@ One CR ≈ one zrok environment + one agent data plane for Shares/Accesses in th
 | Enable OK, Secret create fail | Disable orphan envZID |
 | Secret missing, status has EnvZID | Re-enable (Secret is SoT) |
 | Deploy Ready but Agent Status fail | Not Ready |
+| Deployment Get NotFound after Create | WaitingForAgent (informer cache lag); **not** a reconcile error |
 
 ### Invariants
 
 - Finalizer `zrok.k8s.zrok.io/environment`
 - ControllerReference on Deploy/Service/PVC/Secret
-- Description `zrok-operator/{ns}/{name}`
+- Description `{uniqueID}/zrok-operator/{ns}/{name}` (`spec.uniqueID` or kube-system Namespace UUID)
 
 ## Dependencies
 
 | Dependency | Details |
 |------------|---------|
 | `RESTClient.Enable/Disable` | Controller API |
+| `client.Reader` (APIReader) | GET `kube-system` UUID when `spec.uniqueID` empty |
 | `AgentClient.Status` | Ready gate |
 | `internal/agent` Desired* | Resource shapes |
 | Enable token Secret | `spec.enableTokenSecretRef` (key default `enable-token`) |
@@ -64,6 +66,7 @@ Share + Access reconcilers require Env Ready. Ingress defaults EnvironmentRef to
 ## Configuration
 
 - `spec.apiEndpoint` (default empty → `https://api-v2.zrok.io`)
+- `spec.uniqueID` (default empty → kube-system Namespace UUID; Enable host prefix)
 - `spec.agent.image` (default `docker.io/openziti/zrok2:2.0.4`)
 - `spec.agent.consolePort` default 8888
 - Persistence size default 1Gi RWO
@@ -71,6 +74,8 @@ Share + Access reconcilers require Env Ready. Ingress defaults EnvironmentRef to
 ## Error Handling
 
 Events: `SecretError`, `EnableError`, `Ready`, `SharesExist`, `DisableError`, `Disabled`, `Enabled`.
+
+Missing agent Deployment after Create → Ready=False `WaitingForAgent`, requeue 10s (cache can lag Create). Create AlreadyExists on PVC/Service/Deployment is ignored.
 
 ## Testing
 
@@ -81,6 +86,7 @@ Controller envtest + unit coverage in `internal/controller/` (env-focused tests 
 | Symptom | Fix |
 |---|---|
 | Env never Ready | Check identity Secret, agent logs, gRPC Status via :7777 |
+| `Deployment.apps "{env}-agent" not found` as Reconciler error | Should be gone; Get NotFound is WaitingForAgent |
 | Delete stuck SharesExist | Delete Shares first |
 | Seed missing environment.json | Ensure seed init path deployed |
 

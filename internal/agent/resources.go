@@ -52,13 +52,21 @@ func IdentitySecretName(env *zrokv1alpha1.ZrokEnvironment) string {
 
 // EnvironmentDescription is the remote zrok environment description (Enable body).
 // zrok shares have no description/labels — this is the only remote metadata we can set.
-func EnvironmentDescription(env *zrokv1alpha1.ZrokEnvironment) string {
-	return fmt.Sprintf("zrok-operator/%s/%s", env.Namespace, env.Name)
+func EnvironmentDescription(env *zrokv1alpha1.ZrokEnvironment, uniqueID string) string {
+	return environmentIdentity(env, uniqueID)
 }
 
 // EnvironmentHost is the remote zrok environment host field (Enable body).
-func EnvironmentHost(env *zrokv1alpha1.ZrokEnvironment) string {
-	return fmt.Sprintf("zrok-operator/%s/%s", env.Namespace, env.Name)
+func EnvironmentHost(env *zrokv1alpha1.ZrokEnvironment, uniqueID string) string {
+	return environmentIdentity(env, uniqueID)
+}
+
+func environmentIdentity(env *zrokv1alpha1.ZrokEnvironment, uniqueID string) string {
+	id := env.Spec.UniqueID
+	if id == "" {
+		id = uniqueID
+	}
+	return fmt.Sprintf("%s/zrok-operator/%s/%s", id, env.Namespace, env.Name)
 }
 
 // ShareLabels are Kubernetes labels stamped on ZrokShare objects (not a zrok API).

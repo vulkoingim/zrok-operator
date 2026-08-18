@@ -41,7 +41,7 @@ Keep agent pod shape consistent: non-root, seed identity once/repair, **wipe reg
 | `DeploymentName` / `ServiceName` | `{env}-agent` |
 | `IdentitySecretName` | `{env}-zrok-identity` |
 | `ManagedFrontendName` | `ko-{share.Namespace}-{share.Name}` |
-| `EnvironmentDescription` / `EnvironmentHost` | `zrok-operator/{ns}/{name}` (Enable body; shares have no metadata API) |
+| `EnvironmentDescription` / `EnvironmentHost` | `{uniqueID}/zrok-operator/{ns}/{name}` (Enable body; shares have no metadata API) |
 | `ShareLabels` | K8s labels on ZrokShare (`managed-by`, env, share-mode, frontend-name) |
 | `AgentDialAddr` | `{svc}.{ns}.svc:7777` |
 

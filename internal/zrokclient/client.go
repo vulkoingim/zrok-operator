@@ -180,6 +180,15 @@ func (c *HTTPRESTClient) UpdateShareName(ctx context.Context, apiEndpoint, accou
 	return nil
 }
 
+// IsUnauthorized reports whether err is a zrok API 401 (invalid token or name owned by another account).
+func IsUnauthorized(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := err.Error()
+	return strings.Contains(s, "[401]") || strings.Contains(s, "updateShareNameUnauthorized")
+}
+
 func (c *HTTPRESTClient) DeleteShareName(ctx context.Context, apiEndpoint, accountToken, namespaceToken, name string) error {
 	client, err := c.clientFor(apiEndpoint)
 	if err != nil {

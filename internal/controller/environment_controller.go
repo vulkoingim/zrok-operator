@@ -49,6 +49,8 @@ type ZrokEnvironmentReconciler struct {
 	Scheme   *runtime.Scheme
 	Recorder events.EventRecorder
 	Zrok     *zrokclient.Clients
+	// APIReader bypasses the informer cache. Namespaces are not watched.
+	APIReader client.Reader
 }
 
 // +kubebuilder:rbac:groups=zrok.k8s.zrok.io,resources=zrokenvironments,verbs=get;list;watch;create;update;patch;delete
@@ -62,6 +64,7 @@ type ZrokEnvironmentReconciler struct {
 // +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch;update
 // +kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;watch
+// +kubebuilder:rbac:groups=core,resources=namespaces,resourceNames=kube-system,verbs=get
 
 func (r *ZrokEnvironmentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
@@ -287,8 +290,13 @@ func (r *ZrokEnvironmentReconciler) ensureEnabled(ctx context.Context, env *zrok
 		})
 	}
 
-	host := agent.EnvironmentHost(env)
-	desc := agent.EnvironmentDescription(env)
+	uniqueID, err := r.resolveUniqueID(ctx, env)
+	if err != nil {
+		return err
+	}
+
+	host := agent.EnvironmentHost(env, uniqueID)
+	desc := agent.EnvironmentDescription(env, uniqueID)
 	zid, cfg, err := r.Zrok.REST.Enable(ctx, api, token, host, desc)
 	if err != nil {
 		return err
@@ -337,6 +345,7 @@ func (r *ZrokEnvironmentReconciler) ensureEnabled(ctx context.Context, env *zrok
 
 	if err := status.PatchStatus(ctx, r.Client, env, func() error {
 		env.Status.EnvZID = zid
+		env.Status.UniqueID = uniqueID
 		status.SetCondition(&env.Status.Conditions, zrokv1alpha1.ConditionEnabled, metav1.ConditionTrue, "Enabled", "remote environment enabled", env.Generation)
 		return nil
 	}); err != nil {
@@ -344,6 +353,26 @@ func (r *ZrokEnvironmentReconciler) ensureEnabled(ctx context.Context, env *zrok
 	}
 	r.Recorder.Eventf(env, nil, corev1.EventTypeNormal, "Enabled", "Enable", "enabled remote environment %s", zid)
 	return nil
+}
+
+func (r *ZrokEnvironmentReconciler) resolveUniqueID(ctx context.Context, env *zrokv1alpha1.ZrokEnvironment) (string, error) {
+	if env.Spec.UniqueID != "" {
+		return env.Spec.UniqueID, nil
+	}
+	reader := client.Reader(r)
+	if r.APIReader != nil {
+		reader = r.APIReader
+	}
+	ns := &corev1.Namespace{}
+	if err := reader.Get(ctx, types.NamespacedName{Name: zrokv1alpha1.DefaultUniqueIDNamespace}, ns); err != nil {
+		return "", fmt.Errorf("getting %s UUID for default uniqueID: %w",
+			zrokv1alpha1.DefaultUniqueIDNamespace, err)
+	}
+	uid := string(ns.UID)
+	if uid == "" {
+		return "", fmt.Errorf("%s namespace has empty UID", zrokv1alpha1.DefaultUniqueIDNamespace)
+	}
+	return uid, nil
 }
 
 func (r *ZrokEnvironmentReconciler) ensurePVC(ctx context.Context, env *zrokv1alpha1.ZrokEnvironment) error {
@@ -354,7 +383,7 @@ func (r *ZrokEnvironmentReconciler) ensurePVC(ctx context.Context, env *zrokv1al
 	existing := &corev1.PersistentVolumeClaim{}
 	err := r.Get(ctx, client.ObjectKeyFromObject(desired), existing)
 	if apierrors.IsNotFound(err) {
-		return r.Create(ctx, desired)
+		return ignoreAlreadyExists(r.Create(ctx, desired))
 	}
 	return err
 }
@@ -367,7 +396,7 @@ func (r *ZrokEnvironmentReconciler) ensureService(ctx context.Context, env *zrok
 	existing := &corev1.Service{}
 	err := r.Get(ctx, client.ObjectKeyFromObject(desired), existing)
 	if apierrors.IsNotFound(err) {
-		return r.Create(ctx, desired)
+		return ignoreAlreadyExists(r.Create(ctx, desired))
 	}
 	if err != nil {
 		return err
@@ -389,7 +418,7 @@ func (r *ZrokEnvironmentReconciler) ensureDeployment(ctx context.Context, env *z
 	existing := &appsv1.Deployment{}
 	err := r.Get(ctx, client.ObjectKeyFromObject(desired), existing)
 	if apierrors.IsNotFound(err) {
-		return r.Create(ctx, desired)
+		return ignoreAlreadyExists(r.Create(ctx, desired))
 	}
 	if err != nil {
 		return err
@@ -406,9 +435,20 @@ func (r *ZrokEnvironmentReconciler) ensureDeployment(ctx context.Context, env *z
 func (r *ZrokEnvironmentReconciler) isAgentReady(ctx context.Context, env *zrokv1alpha1.ZrokEnvironment) (bool, error) {
 	dep := &appsv1.Deployment{}
 	if err := r.Get(ctx, types.NamespacedName{Name: agent.DeploymentName(env), Namespace: env.Namespace}, dep); err != nil {
+		// Cache can lag the Create in ensureDeployment; missing deploy is "not ready", not a reconcile error.
+		if apierrors.IsNotFound(err) {
+			return false, nil
+		}
 		return false, err
 	}
 	return dep.Status.ReadyReplicas >= 1 && dep.Status.UpdatedReplicas >= 1, nil
+}
+
+func ignoreAlreadyExists(err error) error {
+	if apierrors.IsAlreadyExists(err) {
+		return nil
+	}
+	return err
 }
 
 func (r *ZrokEnvironmentReconciler) setNotReady(ctx context.Context, env *zrokv1alpha1.ZrokEnvironment, reason, message string) error {

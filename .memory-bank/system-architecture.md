@@ -80,6 +80,7 @@ No workers/queues. Reconciliation + controller-runtime requeue:
 - Identity Secret is cluster-scoped to the Environment’s namespace
 - Agent runs non-root (`runAsNonRoot`, UID 2171)
 - Isolation model: one Environment ≈ one zrok envZID ≈ one agent; Shares must reference an Environment in-cluster
+- Enable host/description `{uniqueID}/zrok-operator/{ns}/{name}` (`spec.uniqueID` or kube-system Namespace UUID) so one zrok account can span clusters
 - No multi-tenant SaaS layer in this repo — cluster RBAC is the boundary
 
 ## 7. Observability

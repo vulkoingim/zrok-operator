@@ -188,6 +188,13 @@ spec:
                 - Delete
                 - Retain
                 type: string
+              uniqueID:
+                description: "UniqueID prefixes the remote zrok environment host and
+                  description\n(`{uniqueID}/zrok-operator/{namespace}/{name}`). When
+                  empty, defaults to\nthe UUID (metadata.uid) of the kube-system Namespace:\n\n\tkubectl
+                  get ns kube-system -o jsonpath='{.metadata.uid}'\n\nApplied at Enable;
+                  changing this later does not rename an existing remote env."
+                type: string
             required:
             - enableTokenSecretRef
             type: object
@@ -268,6 +275,10 @@ spec:
                   by the controller.
                 format: int64
                 type: integer
+              uniqueID:
+                description: UniqueID is the prefix used at Enable (spec.uniqueID,
+                  or kube-system Namespace UUID).
+                type: string
             type: object
         type: object
     served: true

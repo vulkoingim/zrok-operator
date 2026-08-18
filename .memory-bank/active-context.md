@@ -14,6 +14,10 @@
 
 ## Recent Progress
 
+- **Fresh env apply races** (2026-08-18): Env `isAgentReady` Get NotFound after Create → WaitingForAgent (not reconcile error). Share `UpdateShareName` 401 → NameConflict (reserved name owned by another zrok account; public names are globally unique). CreateShareName 409 is swallowed first.
+
+- **UniqueID Enable host** (2026-08-18): `{uniqueID}/zrok-operator/{ns}/{name}`. `spec.uniqueID` overrides; default is the kube-system Namespace UUID. Status records the prefix used at Enable.
+
 - **Version embed** (2026-08-18): `internal/build` + git-describe ldflags on `mise run build` / docker-build / GoReleaser. `bin/manager -version`. No version file.
 
 - **Helm OCI** (2026-08-18): `helm push` to `oci://ghcr.io/vulkoingim/charts` after GoReleaser. Distinct from operator image path.

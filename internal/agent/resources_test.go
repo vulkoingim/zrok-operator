@@ -47,14 +47,22 @@ func TestManagedFrontendName(t *testing.T) {
 }
 
 func TestEnvironmentHostAndDescription(t *testing.T) {
+	const kubeSystemUID = "11111111-2222-3333-4444-555555555555"
 	env := &zrokv1alpha1.ZrokEnvironment{
 		ObjectMeta: metav1.ObjectMeta{Name: "default", Namespace: "demo"},
 	}
-	if got := EnvironmentDescription(env); got != "zrok-operator/demo/default" {
+	want := kubeSystemUID + "/zrok-operator/demo/default"
+	if got := EnvironmentDescription(env, kubeSystemUID); got != want {
 		t.Fatalf("description: %s", got)
 	}
-	if got := EnvironmentHost(env); got != "zrok-operator/demo/default" {
+	if got := EnvironmentHost(env, kubeSystemUID); got != want {
 		t.Fatalf("host: %s", got)
+	}
+
+	env.Spec.UniqueID = "custom-cluster"
+	want = "custom-cluster/zrok-operator/demo/default"
+	if got := EnvironmentHost(env, kubeSystemUID); got != want {
+		t.Fatalf("spec override: %s", got)
 	}
 }
 

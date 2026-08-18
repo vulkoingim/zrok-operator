@@ -3,7 +3,7 @@
 Comprehensive documentation for zrok-operator, optimized for LLM agent consumption.
 Read this file FIRST to find what you need without exploring source code.
 
-> **Last Updated:** 2026-08-17
+> **Last Updated:** 2026-08-18
 
 ---
 
@@ -37,7 +37,7 @@ Entry contract: [AGENTS.md](../AGENTS.md) → this index → Tier 2 area → Tie
 | Local setup / Kind | [development-setup.md](development-setup.md) |
 | Tests / mocks | [testing-practices.md](testing-practices.md) |
 | CI / Helm / release | [build-deployment.md](build-deployment.md) |
-| Ops debugging (409, stuck finalizer) | [debugging-troubleshooting.md](debugging-troubleshooting.md) |
+| Ops debugging (409, 401 NameConflict, stuck finalizer) | [debugging-troubleshooting.md](debugging-troubleshooting.md) |
 | Go style | [code-standards.md](code-standards.md) |
 | How to update this bank | [documentation-maintenance.md](documentation-maintenance.md) |
 | Blueprint (meta) | [BLUEPRINT.md](BLUEPRINT.md) |

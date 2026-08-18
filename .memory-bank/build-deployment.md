@@ -73,7 +73,7 @@ Local image builds (`mise run docker-build` / kind:deploy) still use the multi-s
 
 ## RBAC highlights
 
-ClusterRole `manager-role`: CRDs+status+finalizers; Deployments; PVC/Secret/Service; Pods get/list/watch; Ingress+status; core Events + `events.k8s.io/events` create/patch/update.
+ClusterRole `manager-role`: CRDs+status+finalizers; Deployments; PVC/Secret/Service; Pods get/list/watch; `namespaces` get (`kube-system` only, default uniqueID UUID); Ingress+status; core Events + `events.k8s.io/events` create/patch/update.
 
 After EventRecorder migration, missing events RBAC → event writes fail (reconcile may still work).
 
