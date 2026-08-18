@@ -18,7 +18,7 @@ Manager talks to the agent over **gRPC**, not HTTP `/v1/agent/*`. Agent registry
 
 ```bash
 mise install
-mise run kind-deploy
+mise run kind:deploy
 
 # Credentials (zrok.io or self-hosted enable token)
 kubectl create secret generic zrok-credentials \
@@ -158,7 +158,7 @@ mise tasks                   # list
 mise run gen                 # deepcopy + CRDs + helm crds/
 mise run test                # unit + envtest via gotestsum
 mise run build               # bin/manager
-mise run kind-up && mise run deploy
+mise run kind:up && mise run deploy
 mise run test-e2e            # Kind e2e; set ZROK2_ENABLE_TOKEN for live share
 mise run samples --secret    # apply sample CRs (creates secret from env)
 ```

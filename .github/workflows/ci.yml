@@ -60,8 +60,10 @@ jobs:
 
       - name: Lint
         run: |
+          go mod tidy && git diff --exit-code go.mod go.sum
           golangci-lint config verify
-          mise run lint
+          golangci-lint run
+          govulncheck ./...
 
   test:
     name: Test
@@ -164,7 +166,7 @@ jobs:
       - uses: docker/setup-buildx-action@v4
 
       - name: Create kind cluster
-        run: mise run kind-up
+        run: mise run kind:up
 
       - name: Pack kind node image
         if: steps.kind-image.outputs.cache-hit != 'true'

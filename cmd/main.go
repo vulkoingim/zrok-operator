@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/tls"
 	"flag"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -23,6 +24,7 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	zrokv1alpha1 "github.com/vulkoingim/zrok-operator/api/v1alpha1"
+	"github.com/vulkoingim/zrok-operator/internal/build"
 	"github.com/vulkoingim/zrok-operator/internal/controller"
 	_ "github.com/vulkoingim/zrok-operator/internal/metrics"
 	"github.com/vulkoingim/zrok-operator/internal/zrokclient"
@@ -31,11 +33,6 @@ import (
 var (
 	scheme   = runtime.NewScheme()
 	setupLog = ctrl.Log.WithName("setup")
-
-	// Filled by GoReleaser ldflags on release builds.
-	version = "dev"
-	commit  = "none"
-	date    = "unknown"
 )
 
 func init() {
@@ -51,6 +48,7 @@ func main() {
 	var probeAddr string
 	var secureMetrics bool
 	var enableHTTP2 bool
+	var printVersion bool
 	var tlsOpts []func(*tls.Config)
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to.")
@@ -64,10 +62,16 @@ func main() {
 	flag.StringVar(&metricsCertName, "metrics-cert-name", "tls.crt", "Metrics certificate file name.")
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "Metrics key file name.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false, "Enable HTTP/2 for metrics and webhook servers.")
+	flag.BoolVar(&printVersion, "version", false, "Print version and exit.")
 
 	opts := zap.Options{Development: true}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
+
+	if printVersion {
+		fmt.Printf("%s (%s) %s\n", build.Version, build.GitRevision, build.Date)
+		os.Exit(0)
+	}
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
@@ -199,7 +203,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	setupLog.Info("starting manager", "version", version, "commit", commit, "date", date)
+	setupLog.Info("starting manager",
+		"version", build.Version, "commit", build.GitRevision, "date", build.Date)
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)

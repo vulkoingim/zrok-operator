@@ -107,6 +107,7 @@ zrok-operator/
 │   ├── zrokclient/         # REST controller API + Agent gRPC
 │   ├── status/             # Condition helpers
 │   ├── metrics/            # Prometheus (partially wired)
+│   ├── build/              # Version/Date ldflags; GitRevision from runtime/debug
 │   └── gateway/            # Placeholder (future Gateway API)
 ├── config/                 # Kustomize CRDs, RBAC, samples
 ├── charts/zrok-operator/   # Helm chart

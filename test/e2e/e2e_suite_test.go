@@ -24,7 +24,7 @@ var (
 	certManagerInstalledBySuite = false
 
 	// projectImage is the image built and loaded into Kind. Honor IMG so mise
-	// kind-load and this suite share a tag (default matches kubebuilder scaffold).
+	// kind:load and this suite share a tag (default matches kubebuilder scaffold).
 	projectImage = getenvDefault("IMG", "example.com/zrok-operator:v0.0.1")
 )
 

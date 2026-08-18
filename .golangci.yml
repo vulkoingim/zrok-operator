@@ -124,6 +124,10 @@ linters:
       - linters:
           - gochecknoinits
         path: internal/metrics/
+      # Stamp GitRevision from runtime/debug when not ldflag-overridden.
+      - linters:
+          - gochecknoinits
+        path: internal/build/
       # Deprecated scheme.Builder is still the kubebuilder standard.
       - linters:
           - staticcheck

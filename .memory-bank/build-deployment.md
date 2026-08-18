@@ -1,6 +1,18 @@
 # Build & Deployment
 
-> **Last Updated:** 2026-08-18 (single CI workflow)
+> **Last Updated:** 2026-08-18 (version stamp)
+
+## Version stamp
+
+No `version` file. Version/Date via `-ldflags -X`. GitRevision from `runtime/debug` (`vcs.revision`, `vcs.modified`) when `-buildvcs` is on (mise + GoReleaser). Docker has no `.git` so it still passes `GIT_REVISION` as `-X`.
+
+| Var | Local (`mise run build`) | GoReleaser | Docker |
+|---|---|---|---|
+| `Version` | `git describe --tags --always --dirty` | `{{.Version}}` | same `--build-arg` |
+| `GitRevision` | `debug.ReadBuildInfo` | same (`-buildvcs=true`) | `-X` from host `git rev-parse --short HEAD` |
+| `Date` | UTC now | `{{.Date}}` | same `--build-arg` |
+
+`go run` still gets VCS revision (`-buildvcs=auto`) **if you build the package** (`./cmd`, not `cmd/main.go` — file-list builds are `command-line-arguments` and omit VCS). Version stays `dev` unless ldflags. `bin/manager -version` prints them. There is no stdlib `git describe` — `Main.Version` is a module/pseudo-version, not what we stamp.
 
 ## Artifacts
 
@@ -57,7 +69,7 @@ git push origin v0.0.1
 
 `.goreleaser.yaml` + `Dockerfile.goreleaser` (COPY pre-built `linux/<arch>/manager` into distroless — do not `go build` in that Dockerfile). Workflow: `goreleaser/goreleaser-action@v7` then `helm push dist/helm/*.tgz oci://ghcr.io/<owner>/charts`. Chart path is **`charts/zrok-operator`**, not the operator image repo. `helm package --version {{.Version}}` (no `v` prefix). After the first chart push, set the GHCR package **public** if the repo is public: [packages](https://github.com/vulkoingim?tab=packages).
 
-Local image builds (`mise run docker-build` / kind-deploy) still use the multi-stage `Dockerfile` and **must** `docker build --load` so the tag exists in the daemon Kind uses.
+Local image builds (`mise run docker-build` / kind:deploy) still use the multi-stage `Dockerfile` and **must** `docker build --load` so the tag exists in the daemon Kind uses.
 
 ## RBAC highlights
 

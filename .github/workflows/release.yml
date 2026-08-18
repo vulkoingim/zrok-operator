@@ -5,6 +5,12 @@ on:
     tags:
       - "v*"
 
+env:
+  MISE_TASK_RUN_AUTO_INSTALL: "false"
+  MISE_NOT_FOUND_AUTO_INSTALL: "false"
+  MISE_EXEC_AUTO_INSTALL: "false"
+  KIND_NODE_IMAGE: kindest/node:v1.36.1
+
 permissions:
   contents: write
   packages: write
@@ -23,6 +29,12 @@ jobs:
           cache: true
           cache-dependency-path: go.sum
 
+      - name: Setup mise
+        uses: jdx/mise-action@v4
+        with:
+          cache: true
+          cache_save: false
+
       - uses: azure/setup-helm@v5
 
       # COPY-only Dockerfile; QEMU not required (Go already cross-compiled the binary).
@@ -34,6 +46,12 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: vuln and release check
+        run: |
+          go mod tidy && git diff --exit-code go.mod go.sum
+          govulncheck ./...
+          gorelease
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v7

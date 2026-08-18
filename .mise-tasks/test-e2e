@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
 #MISE description="Kind e2e: build, load, run test/e2e (live share if ZROK2_ENABLE_TOKEN set)"
-#MISE depends=["kind-up", "kind-load", "gen"]
+#MISE depends=["kind:up", "kind:load", "gen"]
 #USAGE flag "--img <img>" help="Image tag" default="zrok-operator:dev"
 set -euo pipefail
 
 IMG="${usage_img:-${IMG:-zrok-operator:dev}}"
 export IMG
-# kind-load (mise depends) already built+loaded this tag. Skip the Ginkgo BeforeSuite rebuild
+# kind:load (mise depends) already built+loaded this tag. Skip the Ginkgo BeforeSuite rebuild
 # so CI does not docker-build a second, different tag (example.com/...) that never lands locally.
 export SKIP_IMAGE_BUILD=true
 
 cd "$(git rev-parse --show-toplevel)"
 
 if ! kind get clusters 2>/dev/null | grep -qx kind; then
-  echo "No kind cluster; run: mise run kind-up" >&2
+  echo "No kind cluster; run: mise run kind:up" >&2
   exit 1
 fi
 

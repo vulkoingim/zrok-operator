@@ -14,6 +14,8 @@
 
 ## Recent Progress
 
+- **Version embed** (2026-08-18): `internal/build` + git-describe ldflags on `mise run build` / docker-build / GoReleaser. `bin/manager -version`. No version file.
+
 - **Helm OCI** (2026-08-18): `helm push` to `oci://ghcr.io/vulkoingim/charts` after GoReleaser. Distinct from operator image path.
 
 - **Single CI workflow** (2026-08-18): `ci.yml` — Lint (writes mise cache) → Test → E2E only on merge queue / `main` / manual dispatch. See [build-deployment.md](build-deployment.md).

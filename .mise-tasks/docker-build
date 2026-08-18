@@ -4,17 +4,32 @@
 set -euo pipefail
 
 IMG="${usage_img:-${IMG:-zrok-operator:dev}}"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=lib/version.sh
+source "$ROOT/.mise-tasks/lib/version.sh"
+
 echo "Building $IMG"
+echo "  Version: ${VERSION}"
+echo "  Git revision: ${GIT_REVISION}"
+echo "  Date: ${DATE}"
 # --load is required when the default builder is docker-container / buildx:
 # without it the build can succeed while the tag never appears in `docker images`
 # (Kind then fails with: image not present locally).
+docker_args=(
+  --load
+  --build-arg "VERSION=${VERSION}"
+  --build-arg "GIT_REVISION=${GIT_REVISION}"
+  --build-arg "DATE=${DATE}"
+  -t "$IMG"
+  .
+)
 if [[ "${GITHUB_ACTIONS:-}" == "true" ]] && docker buildx version >/dev/null 2>&1; then
-  docker buildx build --load \
+  docker buildx build \
     --cache-from=type=gha \
     --cache-to=type=gha,mode=max,ignore-error=true \
-    -t "$IMG" .
+    "${docker_args[@]}"
 else
-  docker build --load -t "$IMG" .
+  docker build "${docker_args[@]}"
 fi
 docker image inspect "$IMG" >/dev/null
 echo "Built $IMG ($(docker image inspect -f '{{.Id}}' "$IMG"))"
