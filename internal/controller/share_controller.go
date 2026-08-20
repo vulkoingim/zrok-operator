@@ -66,7 +66,7 @@ func (r *ZrokShareReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	if requeue, err := r.ensureFinalizerAndLabels(ctx, share); err != nil {
 		return ctrl.Result{}, err
 	} else if requeue {
-		return ctrl.Result{Requeue: true}, nil
+		return ctrl.Result{}, nil
 	}
 
 	mode := share.Spec.ShareMode

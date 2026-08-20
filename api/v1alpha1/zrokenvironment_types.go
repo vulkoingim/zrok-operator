@@ -133,5 +133,5 @@ type ZrokEnvironmentList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&ZrokEnvironment{}, &ZrokEnvironmentList{})
+	registerTypes(&ZrokEnvironment{}, &ZrokEnvironmentList{})
 }

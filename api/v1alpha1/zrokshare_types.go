@@ -175,5 +175,5 @@ type ZrokShareList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&ZrokShare{}, &ZrokShareList{})
+	registerTypes(&ZrokShare{}, &ZrokShareList{})
 }
