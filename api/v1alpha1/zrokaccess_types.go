@@ -66,5 +66,5 @@ type ZrokAccessList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&ZrokAccess{}, &ZrokAccessList{})
+	registerTypes(&ZrokAccess{}, &ZrokAccessList{})
 }

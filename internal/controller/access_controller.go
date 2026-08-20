@@ -59,7 +59,7 @@ func (r *ZrokAccessReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		if err := r.Update(ctx, access); err != nil {
 			return ctrl.Result{}, err
 		}
-		return ctrl.Result{Requeue: true}, nil
+		return ctrl.Result{}, nil
 	}
 
 	env := &zrokv1alpha1.ZrokEnvironment{}

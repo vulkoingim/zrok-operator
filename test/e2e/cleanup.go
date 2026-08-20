@@ -21,37 +21,47 @@ func cleanupLiveZrokTestResources(ctx context.Context) {
 	deleteAllZrokAccesses(ctx)
 	deleteAllZrokEnvironments(ctx)
 
-	secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{
-		Name:      credentialsSecret,
-		Namespace: liveTestNS,
-	}}
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      credentialsSecret,
+			Namespace: liveTestNS,
+		},
+	}
 	deleteObject(ctx, secret, false)
 
-	identity := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{
-		Name:      envCRName + "-zrok-identity",
-		Namespace: liveTestNS,
-	}}
+	identity := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      envCRName + "-zrok-identity",
+			Namespace: liveTestNS,
+		},
+	}
 	deleteObject(ctx, identity, false)
 
 	deleteObject(ctx, desiredNginxDeployment(liveTestNS), true)
 	deleteObject(ctx, desiredNginxService(liveTestNS), true)
 
-	agentDeploy := &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{
-		Name:      envCRName + "-agent",
-		Namespace: liveTestNS,
-	}}
+	agentDeploy := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      envCRName + "-agent",
+			Namespace: liveTestNS,
+		},
+	}
 	deleteObject(ctx, agentDeploy, true)
 
-	agentSvc := &corev1.Service{ObjectMeta: metav1.ObjectMeta{
-		Name:      envCRName + "-agent",
-		Namespace: liveTestNS,
-	}}
+	agentSvc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      envCRName + "-agent",
+			Namespace: liveTestNS,
+		},
+	}
 	deleteObject(ctx, agentSvc, true)
 
-	pvc := &corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{
-		Name:      envCRName + "-zrok-home",
-		Namespace: liveTestNS,
-	}}
+	pvc := &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      envCRName + "-zrok-home",
+			Namespace: liveTestNS,
+		},
+	}
 	deleteObject(ctx, pvc, true)
 }
 

@@ -16,7 +16,7 @@ mise run lint
 
 - CRD/RBAC markers on types/reconcilers → `controller-gen` via `mise run manifests`
 - DeepCopy → `mise run generate`
-- Mocks → `.mockery.yml` + `mise run gen:mocks`
+- Mocks → `.mockery.yml` + `mise run mocks`
 - Helm CRDs → copied from `config/crd/bases/` on `mise run gen`
 
 ## PR expectations

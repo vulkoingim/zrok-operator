@@ -78,7 +78,7 @@ func (r *ZrokEnvironmentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		if err := r.Update(ctx, env); err != nil {
 			return ctrl.Result{}, err
 		}
-		return ctrl.Result{Requeue: true}, nil
+		return ctrl.Result{}, nil
 	}
 
 	token, err := r.readEnableToken(ctx, env)

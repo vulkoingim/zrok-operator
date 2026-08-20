@@ -105,7 +105,7 @@ linters:
       - legacy
       - std-error-handling
     rules:
-      # Kubebuilder SchemeBuilder.Register requires init() in API packages.
+      # Kubebuilder registerTypes requires init() in API packages.
       - linters:
           - gochecknoinits
         path: api/
