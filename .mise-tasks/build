@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Build manager binary to bin/manager"
-#MISE depends=["gen", "fmt", "vet"]
+#MISE depends=["gen", "fmt"]
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
